@@ -85,7 +85,8 @@ const appPlayed = new Map(); // key -> time the app itself sounded it (so the mi
 const keyEls = new Map();
 
 function audio() { if (!ctx) { ctx = new (window.AudioContext || window.webkitAudioContext)(); piano = new Piano(ctx); piano.load(); } if (ctx.state === 'suspended') ctx.resume(); return ctx; }
-function sound(m, dur) { audio(); piano.play(m, Math.min(dur, 2)); appPlayed.set(m, performance.now() + dur * 1000); }
+// play key m for dur seconds, starting `delay` seconds from now
+function sound(m, dur, delay = 0) { audio(); piano.play(m, Math.min(dur, 2), 0.7, ctx.currentTime + delay); appPlayed.set(m, Math.max(appPlayed.get(m) || 0, performance.now() + (delay + Math.min(dur, 2)) * 1000)); }
 
 async function openPiece(meta, own) {
   stopDemo(); clearTimeout(autoTimer);
@@ -217,17 +218,26 @@ function setStep(i) {
   const tg = targetsOf(s);
   judge.setTarget(tg, S.octave, performance.now());
   mic?.detector?.setTargets(tg);
-  if (!tg.length) { // only the other hand plays here: accompany and move on in time
-    if (S.accomp) s.notes.forEach(n => sound(n.midi, n.dur / 1000 * 100 / S.speed));
-    const next = P.steps[idx + 1]; autoTimer = setTimeout(advance, next ? (next.t - s.t) * 100 / S.speed : 400);
+  if (!tg.length) {
+    // only the other hand plays here: go straight to your next note, and let the other hand
+    // sound in the background with its own timing (stepping through it looked like skipping)
+    let j = idx, guard = 0;
+    while (j >= 0 && P.steps[j] && !targetsOf(P.steps[j]).length && guard++ < P.steps.length) {
+      const sj = P.steps[j], delay = Math.max(0, (sj.t - s.t) / 1000 * 100 / S.speed);
+      if (S.accomp && delay < 8) sj.notes.forEach(n => sound(n.midi, n.dur / 1000 * 100 / S.speed, delay));
+      j = nextIndex(j);
+    }
+    if (j < 0 || guard >= P.steps.length) return finish();
+    return setStep(j);
   }
 }
-function advance() {
-  let next = idx + 1;
+// the step after i (wrapping inside an active loop), or -1 at the end of the piece
+function nextIndex(i) {
+  let next = i + 1;
   if (loopOn()) { const [a, b] = loopRange(); const nm = P.steps[next]?.measure; if (next >= P.steps.length || nm > b) { next = P.steps.findIndex(s => s.measure >= a); loops++; } }
-  if (next >= P.steps.length) return finish();
-  setStep(next);
+  return next >= P.steps.length ? -1 : next;
 }
+function advance() { const next = nextIndex(idx); if (next < 0) return finish(); setStep(next); }
 // debug log of what the microphone hears and what the judge decides: window.__fermata.log
 const LOG = []; const log = e => { LOG.push(e); if (LOG.length > 600) LOG.shift(); };
 let lastMistakeT = -1e9;
