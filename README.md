@@ -98,6 +98,8 @@ VEROVIO_DIR=/tmp/vrv node test/library.test.mjs
 
 ## Credits and licences
 
+The code is [MIT licensed](LICENSE). The scores and samples below keep their own licences.
+
 - **Scores:** 59 pieces are CC0 or public domain, from the [PDMX](https://zenodo.org/records/13763756) dataset of MuseScore public-domain scores. 12 are CC BY-NC-SA 4.0, from the [ASAP](https://github.com/fosfrancesco/asap-dataset) dataset. 7 Humdrum files are CC BY-NC-SA 4.0 from [Craig Sapp](https://github.com/craigsapp)'s repositories. The exact source and licence of every piece are in `library/catalog.json` and shown in the app.
 - **Piano sound:** Salamander Grand Piano by Alexander Holm, CC BY 3.0, served by [Tone.js](https://tonejs.github.io/).
 - **Notation engraving:** [Verovio](https://www.verovio.org) (LGPL-3.0).
