@@ -21,10 +21,11 @@ const tks = {}, mods = {};
 const vrvModule = hum => (mods[hum ? 'hum' : 'std'] ||= Promise.all([import(VRV + (hum ? 'verovio-module-hum.mjs' : 'verovio-module.mjs')), import(VRV + 'verovio.mjs')])
   .then(async ([mod, { VerovioToolkit }]) => ({ module: await mod.default(), VerovioToolkit })));
 function toolkit(hum) { const k = hum ? 'hum' : 'std'; return tks[k] ||= vrvModule(hum).then(({ module, VerovioToolkit }) => new VerovioToolkit(module)); }
-// a second toolkit for small examples (scale previews, lessons), so they never replace the open piece
+// a separate Verovio instance for small examples (scale previews, lessons): it never replaces the open
+// piece, and Verovio 6.3's ABC importer leaks key signatures between loads within one instance
 let snipTk = null;
 async function snippet(data, scale = 36) {
-  snipTk ||= await vrvModule(false).then(({ module, VerovioToolkit }) => new VerovioToolkit(module));
+  snipTk ||= await Promise.all([import(VRV + 'verovio-module.mjs'), import(VRV + 'verovio.mjs')]).then(async ([mod, { VerovioToolkit }]) => new VerovioToolkit(await mod.default()));
   snipTk.setOptions({ scale, breaks: 'none', adjustPageWidth: true, adjustPageHeight: true, header: 'none', footer: 'none', pageMarginTop: 10, pageMarginBottom: 10, pageMarginLeft: 10, pageMarginRight: 10 });
   return snipTk.loadData(data) ? snipTk.renderToSVG(1) : '';
 }
@@ -132,15 +133,16 @@ async function openPiece(meta, own) {
   idx = 0; mistakes = 0; startedAt = 0; loops = 0; $('#miss').textContent = 0;
   setStep(saved < P.steps.length ? saved : 0);
 }
-$('#back').onclick = () => {
-  stopDemo(); clearTimeout(autoTimer); stopListening(); $('#practice').hidden = true; $('#library').hidden = false;
-  showPane(P?.meta.scale ? 'scales' : P?.meta.drill ? 'drill' : 'pieces'); renderLibrary();
-};
+function leavePractice() {
+  stopDemo(); clearTimeout(autoTimer); stopListening(); $('#practice').hidden = true; $('#library').hidden = false; renderLibrary();
+}
+// back to the section the exercise came from
+$('#back').onclick = () => { leavePractice(); showPane(P?.meta.scale ? 'scales' : P?.meta.drill ? 'drill' : 'pieces'); };
 // routing: #<piece-id>, #scales, #drill, #theory, #lesson-<id>
 function fromHash() {
   const id = decodeURIComponent(location.hash.slice(1));
-  if (['pieces', 'scales', 'drill', 'theory'].includes(id)) { if (!$('#practice').hidden) $('#back').click(); return showPane(id, false); }
-  if (id.startsWith('lesson-')) { if (!$('#practice').hidden) $('#back').click(); showPane('theory', false); return openLesson(id.slice(7)); }
+  if (['pieces', 'scales', 'drill', 'theory'].includes(id)) { if (!$('#practice').hidden) leavePractice(); return showPane(id, false); }
+  if (id.startsWith('lesson-')) { if (!$('#practice').hidden) leavePractice(); showPane('theory', false); return openLesson(id.slice(7)); }
   const p = id && catalog.find(c => c.id === id); if (p && P?.meta.id !== id) openPiece(p, false);
 }
 addEventListener('hashchange', fromHash);
