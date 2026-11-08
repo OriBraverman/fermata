@@ -74,8 +74,9 @@ export class Salience {
 // a broadband attack (a repeated note).
 export class Detector {
   // targetRangeDb: an expected key must be within this many dB of the loudest key to count
-  constructor(sr, { n = 8192, riseDb = 6, aboveFloorDb = 14, neighbourDb = 1, historyFrames = 4, refractoryMs = 90, attackRatio = 2.2, targetRangeDb = 18 } = {}) {
-    Object.assign(this, { sr, n, riseDb, aboveFloorDb, neighbourDb, historyFrames, refractoryMs, attackRatio, targetRangeDb });
+  constructor(sr, { n = 8192, riseDb = 6, aboveFloorDb = 14, neighbourDb = 1, historyFrames = 4, refractoryMs = 90, attackRatio = 2.2, targetRangeDb = 18, tonalDb = 9 } = {}) {
+    Object.assign(this, { sr, n, riseDb, aboveFloorDb, neighbourDb, historyFrames, refractoryMs, attackRatio, targetRangeDb, tonalDb });
+    this.pending = new Set();
     this.spec = new Spectrum(n); this.sal = new Salience(sr, n);
     this.hist = Array.from({ length: 128 }, () => new Float32Array(historyFrames).fill(-200));
     this.hi = 0; this.last = new Float64Array(128).fill(-1e9); this.db = new Float32Array(128); this.floor = null;
@@ -96,6 +97,21 @@ export class Detector {
       this.nbParts.set(m, [m - 1, m + 1].filter(n => n >= LOW && n <= HIGH && !this.targets.has(n)).map(n => this.sal.exclusive(n, others)));
     }
   }
+  // How tonal key m sounds: its first partials' peaks against the spectrum just beside them, in dB.
+  // A real string gives sharp peaks (15–30 dB); the noise burst of a key strike is flat (a few dB).
+  tonality(m, mag) {
+    let num = 0, den = 0;
+    for (const p of (this.sal.keys[m - LOW] || []).slice(0, 6)) {
+      if (p.w <= 0.05) continue;
+      let pk = 0; for (let b = p.lo; b <= p.hi; b++) if (mag[b] > pk) pk = mag[b];
+      const w = p.hi - p.lo + 1; let s = 0, c = 0;
+      for (let b = p.lo - 2 * w; b < p.lo - w; b++) if (b > 0) { s += mag[b]; c++; }
+      for (let b = p.hi + w + 1; b <= p.hi + 2 * w; b++) if (b < mag.length) { s += mag[b]; c++; }
+      if (!c) continue;
+      num += p.w * 20 * Math.log10((pk + 1e-9) / (s / c + 1e-9)); den += p.w;
+    }
+    return den ? num / den : 0;
+  }
   // returns { onsets:[midi], db: Float32Array(128) (salience in dB), floor, rms, attack }
   process(timeData, t) {
     let e = 0; for (let i = timeData.length - this.n; i < timeData.length; i++) e += timeData[i] * timeData[i];
@@ -111,7 +127,7 @@ export class Detector {
     // noise floor: 30th percentile of key saliences, tracked slowly
     const sorted = Array.from(db.subarray(LOW, HIGH + 1)).sort((a, b) => a - b), q = sorted[Math.floor(sorted.length * 0.3)];
     this.floor = this.floor == null ? q : this.floor + (q - this.floor) * (q < this.floor ? 0.5 : 0.08);
-    const onsets = [], rise = this.rise;
+    const onsets = [], rise = this.rise, checked = []; // checked: confirmed-or-rejected candidates with their tonality (for debugging)
     for (let m = LOW; m <= HIGH; m++) { let mn = Infinity; for (const v of this.hist[m]) if (v < mn) mn = v; rise[m] = db[m] - mn; }
     let maxDb = -200; for (let m = LOW; m <= HIGH; m++) if (db[m] > maxDb) maxDb = db[m];
     for (let m = LOW; m <= HIGH; m++) {
@@ -121,15 +137,20 @@ export class Detector {
       const peak = db[m] > nb + this.neighbourDb && db[m] > this.floor + this.aboveFloorDb + (m < 40 ? 4 : 0) && db[m] > maxDb - (tgt ? this.targetRangeDb : 22);
       const newPeak = peak && t - this.peakT[m] > 250 && rise[m] > 3;
       if (peak) this.peakT[m] = t;
+      // confirm last frame's candidate: it must still be a tonal peak (a strike's noise burst is gone by then)
+      if (this.pending.has(m)) {
+        this.pending.delete(m);
+        const ton = peak ? this.tonality(m, mag) : -99; checked.push([m, Math.round(ton)]);
+        if (ton > this.tonalDb) { onsets.push(m); this.last[m] = t; } else this.armed[m] = 1;
+        continue;
+      }
       if (rise[m] < (tgt ? 1.5 : this.riseDb * 0.4) && !newPeak) { this.armed[m] = 1; continue; }
       const restrike = peak && (rise[m] > this.riseDb || (attack && rise[m] > 2.5) || (tgt && rise[m] > 3));
-      if (this.armed[m] && (newPeak || restrike) && t - this.last[m] > this.refractoryMs) {
-        onsets.push(m); this.last[m] = t; this.armed[m] = 0;
-      }
+      if (this.armed[m] && (newPeak || restrike) && t - this.last[m] > this.refractoryMs) { this.pending.add(m); this.armed[m] = 0; }
     }
     for (let m = LOW; m <= HIGH; m++) this.hist[m][this.hi] = db[m];
     this.hi = (this.hi + 1) % this.historyFrames;
-    return { onsets, db, floor: this.floor, rms, attack, maxDb };
+    return { onsets, db, floor: this.floor, rms, attack, maxDb, checked };
   }
 }
 
@@ -144,17 +165,19 @@ export function explainedBy(m, sources, db) {
 // Keys struck a little ahead (while the previous step was still being recognised) are kept and
 // count for the next step, so fast passages don't get stuck.
 export class WaitJudge {
-  constructor({ windowMs = 400 } = {}) { this.windowMs = windowMs; this.target = []; this.hits = new Map(); this.octave = false; this.recent = []; this.lastUsed = -1e9; }
+  constructor({ windowMs = 400 } = {}) { this.windowMs = windowMs; this.target = []; this.hits = new Map(); this.octave = false; this.recent = []; this.lastUsed = -1e9; this.blockUntil = -1e9; }
   setTarget(midis, octaveOk = false, t = null) {
     this.target = [...midis]; this.hits.clear(); this.octave = octaveOk;
     if (t != null) for (const r of this.recent) {
-      if (r.t > this.lastUsed + 80 && t - r.t <= 200) { const w = this.target.find(x => this.matches(r.m, x)); if (w !== undefined) this.hits.set(w, r.t); }
+      if (r.t > this.lastUsed + 80 && t - r.t <= this.windowMs) { const w = this.target.find(x => this.matches(r.m, x)); if (w !== undefined) this.hits.set(w, r.t); }
     }
   }
   matches(played, want) { return played === want || (this.octave && (played - want) % 12 === 0); }
   // onsets: keys struck now (from mic Detector or MIDI). Returns { accepted, wrong:[midi], hit:[midi] }.
-  feed(onsets, t, db = null) {
+  // blockMs: after accepting a step, ignore keys for this long, so one strike can't also complete the next step
+  feed(onsets, t, db = null, blockMs = 0) {
     const hit = [], wrong = [];
+    if (t < this.blockUntil) return { accepted: false, wrong, hit };
     for (const m of onsets) {
       this.recent.push({ m, t });
       const tgt = this.target.find(w => this.matches(m, w));
@@ -164,7 +187,7 @@ export class WaitJudge {
     this.recent = this.recent.filter(r => t - r.t <= this.windowMs * 1.5);
     for (const [k, v] of this.hits) if (t - v > this.windowMs) this.hits.delete(k);
     const accepted = this.target.length > 0 && this.target.every(w => this.hits.has(w));
-    if (accepted) { this.lastUsed = Math.max(...this.hits.values()); this.hits.clear(); }
+    if (accepted) { this.lastUsed = Math.max(...this.hits.values()); this.hits.clear(); this.blockUntil = t + blockMs; }
     return { accepted, wrong, hit };
   }
 }

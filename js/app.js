@@ -235,7 +235,7 @@ let lastMistakeT = -1e9;
 function input(keys, src, fr) {
   if (!P || demoTimer || !P.steps[idx]) return;
   const now = performance.now(), step = idx;
-  const r = judge.feed(keys, now, fr?.db);
+  const r = judge.feed(keys, now, fr?.db, src === 'mic' ? 110 : 0);
   r.hit.forEach(m => flash(m, 'hit', 250));
   let wrong = r.wrong;
   // through the mic, count a mistake only for a real strike: a fresh attack, nothing expected was hit,
@@ -291,7 +291,7 @@ async function startListening() {
     // ignore what the app itself is playing (accompaniment / taps) and its octaves
     const keys = r.onsets.filter(m => ![0, 12, -12, 19, 24].some(d => (appPlayed.get(m - d) || 0) > now - 150));
     if (keys.length) $('#heard').textContent = 'שומע: ' + keys.slice(0, 4).map(m => NAMES[m % 12] + (Math.floor(m / 12) - 1)).join(' ');
-    if (r.onsets.length) log({ t: Math.round(now), src: 'frame', on: r.onsets.map(m => `${m}:${(r.db[m] - r.maxDb).toFixed(0)}`), max: Math.round(r.maxDb), floor: Math.round(r.floor), atk: r.attack, rms: +r.rms.toFixed(4) });
+    if (r.checked.length) log({ t: Math.round(now), src: 'frame', on: r.checked.map(([m, ton]) => `${m}:${(r.db[m] - r.maxDb).toFixed(0)}:${ton}${r.onsets.includes(m) ? '' : 'x'}`), max: Math.round(r.maxDb), floor: Math.round(r.floor), atk: r.attack, rms: +r.rms.toFixed(4) });
     if (keys.length) input(keys, 'mic', r);
   });
   try { await mic.start({ aboveFloorDb: 20 - S.sens / 100 * 12 }); }
