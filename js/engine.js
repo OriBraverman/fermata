@@ -73,8 +73,9 @@ export class Salience {
 // clearly above the noise floor) — or, if it already was one, when it jumps again together with
 // a broadband attack (a repeated note).
 export class Detector {
-  constructor(sr, { n = 8192, riseDb = 6, aboveFloorDb = 14, neighbourDb = 1, historyFrames = 4, refractoryMs = 90, attackRatio = 2.2 } = {}) {
-    Object.assign(this, { sr, n, riseDb, aboveFloorDb, neighbourDb, historyFrames, refractoryMs, attackRatio });
+  // targetRangeDb: an expected key must be within this many dB of the loudest key to count
+  constructor(sr, { n = 8192, riseDb = 6, aboveFloorDb = 14, neighbourDb = 1, historyFrames = 4, refractoryMs = 90, attackRatio = 2.2, targetRangeDb = 18 } = {}) {
+    Object.assign(this, { sr, n, riseDb, aboveFloorDb, neighbourDb, historyFrames, refractoryMs, attackRatio, targetRangeDb });
     this.spec = new Spectrum(n); this.sal = new Salience(sr, n);
     this.hist = Array.from({ length: 128 }, () => new Float32Array(historyFrames).fill(-200));
     this.hi = 0; this.last = new Float64Array(128).fill(-1e9); this.db = new Float32Array(128); this.floor = null;
@@ -104,6 +105,7 @@ export class Detector {
     if (es > this.attackRatio * prevE + 1e-6) this.attackT = t;
     const attack = t - (this.attackT ?? -1e9) < 160; // the spectrum lags the attack by a few hops
     this.eHist.push(es); if (this.eHist.length > 4) this.eHist.shift();
+    this.attackNow = es > this.attackRatio * prevE + 1e-6;
     const mag = this.spec.compute(timeData), sal = this.sal.compute(mag), db = this.db;
     for (let m = LOW; m <= HIGH; m++) db[m] = 20 * Math.log10(sal[m] + 1e-9);
     // noise floor: 30th percentile of key saliences, tracked slowly
@@ -116,7 +118,7 @@ export class Detector {
       const tgt = this.targets.has(m);
       const nb = tgt ? Math.max(-200, ...this.nbParts.get(m).map(ps => 20 * Math.log10(this.sal.sum(ps, mag) + 1e-9)))
         : Math.max(m > LOW ? db[m - 1] : -200, m < HIGH ? db[m + 1] : -200);
-      const peak = db[m] > nb + this.neighbourDb && db[m] > this.floor + this.aboveFloorDb + (m < 40 ? 4 : 0) && db[m] > maxDb - (tgt ? 30 : 22);
+      const peak = db[m] > nb + this.neighbourDb && db[m] > this.floor + this.aboveFloorDb + (m < 40 ? 4 : 0) && db[m] > maxDb - (tgt ? this.targetRangeDb : 22);
       const newPeak = peak && t - this.peakT[m] > 250 && rise[m] > 3;
       if (peak) this.peakT[m] = t;
       if (rise[m] < (tgt ? 1.5 : this.riseDb * 0.4) && !newPeak) { this.armed[m] = 1; continue; }
@@ -127,7 +129,7 @@ export class Detector {
     }
     for (let m = LOW; m <= HIGH; m++) this.hist[m][this.hi] = db[m];
     this.hi = (this.hi + 1) % this.historyFrames;
-    return { onsets, db, floor: this.floor, rms, attack };
+    return { onsets, db, floor: this.floor, rms, attack, maxDb };
   }
 }
 
@@ -146,7 +148,7 @@ export class WaitJudge {
   setTarget(midis, octaveOk = false, t = null) {
     this.target = [...midis]; this.hits.clear(); this.octave = octaveOk;
     if (t != null) for (const r of this.recent) {
-      if (r.t > this.lastUsed + 80 && t - r.t <= this.windowMs) { const w = this.target.find(x => this.matches(r.m, x)); if (w !== undefined) this.hits.set(w, r.t); }
+      if (r.t > this.lastUsed + 80 && t - r.t <= 200) { const w = this.target.find(x => this.matches(r.m, x)); if (w !== undefined) this.hits.set(w, r.t); }
     }
   }
   matches(played, want) { return played === want || (this.octave && (played - want) % 12 === 0); }

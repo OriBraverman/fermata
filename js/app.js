@@ -228,12 +228,21 @@ function advance() {
   if (next >= P.steps.length) return finish();
   setStep(next);
 }
-// keys played by the user (mic onsets, MIDI or tapping)
-function input(keys, src, db) {
+// debug log of what the microphone hears and what the judge decides: window.__fermata.log
+const LOG = []; const log = e => { LOG.push(e); if (LOG.length > 600) LOG.shift(); };
+let lastMistakeT = -1e9;
+// keys played by the user (mic onsets, MIDI or tapping); fr = the detector frame for the mic
+function input(keys, src, fr) {
   if (!P || demoTimer || !P.steps[idx]) return;
-  const r = judge.feed(keys, performance.now(), db);
+  const now = performance.now(), step = idx;
+  const r = judge.feed(keys, now, fr?.db);
   r.hit.forEach(m => flash(m, 'hit', 250));
-  if (r.wrong.length) { mistakes += r.wrong.length; $('#miss').textContent = mistakes; r.wrong.forEach(m => flash(m, 'bad', 400)); }
+  let wrong = r.wrong;
+  // through the mic, count a mistake only for a real strike: a fresh attack, nothing expected was hit,
+  // the wrong key is the loudest sound, and at most one per attack
+  if (src === 'mic') wrong = fr.attack && !r.hit.length && now - lastMistakeT > 350 ? wrong.filter(m => fr.db[m] >= fr.maxDb - 3).slice(0, 1) : [];
+  if (wrong.length) { lastMistakeT = now; mistakes += wrong.length; $('#miss').textContent = mistakes; wrong.forEach(m => flash(m, 'bad', 400)); }
+  log({ t: Math.round(now), src, step, want: targetsOf(P.steps[step]), keys, hit: r.hit, wrong, accepted: r.accepted });
   if (r.accepted) {
     if (!startedAt) startedAt = performance.now();
     const s = P.steps[idx];
@@ -282,7 +291,8 @@ async function startListening() {
     // ignore what the app itself is playing (accompaniment / taps) and its octaves
     const keys = r.onsets.filter(m => ![0, 12, -12, 19, 24].some(d => (appPlayed.get(m - d) || 0) > now - 150));
     if (keys.length) $('#heard').textContent = 'שומע: ' + keys.slice(0, 4).map(m => NAMES[m % 12] + (Math.floor(m / 12) - 1)).join(' ');
-    if (keys.length) input(keys, 'mic', r.db);
+    if (r.onsets.length) log({ t: Math.round(now), src: 'frame', on: r.onsets.map(m => `${m}:${(r.db[m] - r.maxDb).toFixed(0)}`), max: Math.round(r.maxDb), floor: Math.round(r.floor), atk: r.attack, rms: +r.rms.toFixed(4) });
+    if (keys.length) input(keys, 'mic', r);
   });
   try { await mic.start({ aboveFloorDb: 20 - S.sens / 100 * 12 }); }
   catch { note.textContent = 'אין גישה למיקרופון. אשר גישה בהגדרות הדפדפן ונסה שוב.'; note.hidden = false; mic = null; return; }
@@ -324,4 +334,4 @@ $('#zoomIn').onclick = () => { S.zoom = Math.min(90, S.zoom + 6); saveS(); rende
 $('#zoomOut').onclick = () => { S.zoom = Math.max(22, S.zoom - 6); saveS(); renderScore(); };
 
 loadLibrary();
-window.__app = { get P() { return P; }, get idx() { return idx; }, input, setStep }; // for testing
+window.__app = { get P() { return P; }, get idx() { return idx; }, input, setStep, LOG, get mic() { return mic; } }; // for testing / live debugging
