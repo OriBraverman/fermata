@@ -7,435 +7,168 @@
 <meta name="mobile-web-app-capable" content="yes">
 <title>פסנתרון</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;700&family=Secular+One&family=Noto+Music&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;700&family=Frank+Ruhl+Libre:wght@500;700&display=swap">
 <style>
-/* layout: one tablet screen — toolbar, scrolling staff, the two hands, keyboard pinned to the bottom */
+/* layout: library grid → practice screen (toolbar / sheet music on paper / keyboard pinned bottom) */
 :root{
-  --bg:#eef1f6; --panel:#ffffff; --ink:#1a2233; --muted:#5f6b80; --line:#d3d9e4;
-  --rh:#3456d6; --lh:#0f9a4e; --bad:#d9342b; --done:#9aa5b8;
-  --ivory:#fcfcfa; --ebony:#1c2130; --keyline:#aeb6c4;
-  --display:"Secular One","Rubik",system-ui,sans-serif;
+  --bg:#eceef2; --panel:#ffffff; --ink:#191f2c; --muted:#5c6679; --line:#d2d7e1; --paper:#fffdf8;
+  --rh:#2f55d4; --lh:#0b8f4a; --bad:#d3302a; --accent:#2f55d4;
+  --ivory:#fbfbf8; --ebony:#1b202c; --keyline:#aab2c0;
+  --display:"Frank Ruhl Libre","Times New Roman",serif;
   --body:"Rubik",system-ui,-apple-system,"Segoe UI",Arial,sans-serif;
-  --music:"Noto Music","Segoe UI Symbol","Apple Symbols",serif;
   color-scheme:light;
 }
 @media (prefers-color-scheme:dark){:root{
-  --bg:#0f131b; --panel:#171d29; --ink:#e6eaf2; --muted:#98a2b4; --line:#2a3345;
-  --rh:#7d95ff; --lh:#3ccf7f; --bad:#ff6b61; --done:#566079;
-  --ivory:#f1f1ec; --ebony:#0a0d13; --keyline:#6b7385; color-scheme:dark;
+  --bg:#0e1219; --panel:#161c27; --ink:#e5e9f1; --muted:#97a1b3; --line:#283143; --paper:#f7f4ec;
+  --rh:#7f97ff; --lh:#3fcf83; --bad:#ff6a60; --accent:#7f97ff;
+  --ivory:#efefea; --ebony:#090c11; --keyline:#646c7e; color-scheme:dark;
 }}
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
 body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;-webkit-tap-highlight-color:transparent;
   padding:env(safe-area-inset-top,0) max(12px,env(safe-area-inset-right,0px)) env(safe-area-inset-bottom,0) max(12px,env(safe-area-inset-left,0px))}
 button,select,input{font:inherit;color:inherit}
-button{cursor:pointer;border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:10px 14px;min-height:44px}
-button:focus-visible,input:focus-visible{outline:3px solid var(--rh);outline-offset:2px}
-button.primary{background:var(--rh);border-color:var(--rh);color:#fff;font-weight:700}
+button,.btn{cursor:pointer;border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:8px 12px;min-height:42px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700}
 button.primary.on{background:var(--bad);border-color:var(--bad)}
+button[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+input[type=search],select,input[type=number]{border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:8px 10px;min-height:42px}
 [hidden]{display:none!important}
 
 /* library */
-#library{max-width:980px;margin:0 auto;padding-block:20px 32px}
-#library h1{font-family:var(--display);font-weight:400;font-size:2.4rem;margin:0}
-#library .lead{color:var(--muted);margin:6px 0 20px;max-width:62ch;line-height:1.5}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:12px}
-.card{text-align:start;display:flex;flex-direction:column;gap:6px;padding:16px;border-radius:14px;min-height:120px}
-.card b{font-size:1.15rem}
+#library{max-width:1100px;margin:0 auto;padding-block:18px 40px;display:flex;flex-direction:column;gap:14px}
+.head{display:flex;align-items:end;gap:12px;flex-wrap:wrap}
+.head h1{font-family:var(--display);font-size:2.6rem;margin:0;line-height:1}
+.head p{margin:0;color:var(--muted);flex:1;min-width:240px}
+.filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.filters input[type=search]{flex:1;min-width:200px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
+.card{text-align:start;flex-direction:column;align-items:stretch;gap:4px;padding:14px;border-radius:12px;min-height:104px;white-space:normal}
+.card b{font-size:1.05rem;font-weight:500}
 .card small{color:var(--muted)}
-.chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:auto}
-.chip{font-size:.78rem;padding:2px 8px;border-radius:99px;border:1px solid var(--line);color:var(--muted)}
-.chip.r{border-color:var(--rh);color:var(--rh)} .chip.l{border-color:var(--lh);color:var(--lh)}
+.card .meta{display:flex;gap:8px;align-items:center;margin-top:auto;font-size:.8rem;color:var(--muted)}
+.lvl{letter-spacing:2px;color:var(--accent)}
+.sect{font-family:var(--display);font-size:1.3rem;margin:10px 0 0}
+.foot{color:var(--muted);font-size:.8rem;line-height:1.5}
 
 /* practice */
-#practice{height:100%;display:flex;flex-direction:column;gap:8px;padding-block:8px}
-.bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.bar h2{font-family:var(--display);font-weight:400;font-size:1.4rem;margin:0 6px;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#practice{height:100%;display:flex;flex-direction:column;gap:6px;padding-block:6px}
+.bar{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.bar h2{font-family:var(--display);font-size:1.35rem;margin:0 4px;flex:1;min-width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar .sub{color:var(--muted);font-size:.85rem}
 .seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
-.seg button{border:0;border-radius:0;min-height:40px;padding:8px 12px}
-.seg button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
-.opt{display:inline-flex;align-items:center;gap:6px;color:var(--muted);font-size:.9rem}
-.opt input[type=range]{width:110px}
-#status{display:flex;align-items:center;gap:10px;font-size:.95rem;color:var(--muted)}
-#meter{width:70px;height:8px;border-radius:4px;background:var(--line);overflow:hidden}
-#meter i{display:block;height:100%;width:0;background:var(--lh);transition:width .05s}
-#heard{min-width:5.5em;font-weight:500;color:var(--ink)}
-#progress{font-variant-numeric:tabular-nums}
+.seg button{border:0;border-radius:0;min-height:40px;padding:6px 10px}
+#pos{font-variant-numeric:tabular-nums;color:var(--muted);font-size:.9rem}
+#status{display:inline-flex;align-items:center;gap:8px;color:var(--muted);font-size:.9rem}
+#meter{width:60px;height:8px;border-radius:4px;background:var(--line);overflow:hidden}
+#meter i{display:block;height:100%;width:0;background:var(--lh)}
+#heard{min-width:6em;color:var(--ink);font-weight:500}
+#panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px;display:flex;gap:14px;flex-wrap:wrap;align-items:center;font-size:.92rem}
+#panel label{display:inline-flex;align-items:center;gap:6px}
+#panel input[type=number]{width:70px}
+#notice{background:color-mix(in srgb,var(--bad) 12%,var(--panel));border:1px solid var(--bad);border-radius:10px;padding:8px 12px;font-size:.95rem}
 
-.staffwrap{background:var(--panel);border:1px solid var(--line);border-radius:14px;overflow:hidden;flex:0 0 auto}
-#staff{direction:ltr;display:block;width:100%;height:auto;max-height:34vh}
-#staff .ln{stroke:var(--ink);stroke-opacity:.55;stroke-width:1.2}
-#staff .clef{font-family:var(--music);fill:var(--ink)}
-#staff .n{fill:var(--ink);stroke:var(--ink)}
-#staff .n .hollow{fill:var(--panel)}
-#staff .n.done{fill:var(--done);stroke:var(--done)}
-#staff .n.done text{fill:var(--done)}
-#staff .n.cur.R{fill:var(--rh);stroke:var(--rh)} #staff .n.cur.L{fill:var(--lh);stroke:var(--lh)}
-#staff .n text{stroke:none;font-family:var(--body);text-anchor:middle}
-#staff .fing{font-weight:700;font-size:15px}
-#staff .R .fing{fill:var(--rh)} #staff .L .fing{fill:var(--lh)}
-#staff .nm{font-size:12px;fill:var(--muted)}
-#staff .cur .nm{font-weight:700;font-size:14px}
-#staff .hl{fill:none;stroke:none}
-#staff .cur .hl{fill:currentColor;opacity:.12}
-#staff .R .hl{color:var(--rh)} #staff .L .hl{color:var(--lh)}
-#notes{transition:transform .35s ease}
-#staff .clefbg{fill:var(--panel)}
+#scorewrap{flex:1 1 auto;min-height:0;overflow:auto;background:var(--paper);border:1px solid var(--line);border-radius:12px;position:relative;-webkit-overflow-scrolling:touch}
+#score{direction:ltr;padding:4px 0;color:#1a1a1a}
+#score svg{display:block;margin:0 auto}
+#score g.note{cursor:pointer}
+#score g.note.cur-R,#score g.note.cur-R *{fill:var(--rh)!important;stroke:var(--rh)}
+#score g.note.cur-L,#score g.note.cur-L *{fill:var(--lh)!important;stroke:var(--lh)}
+#score g.note.hitnote,#score g.note.hitnote *{fill:#999!important}
+#score .afing{font-family:var(--body);font-weight:700;text-anchor:middle;fill:#6b7280}
+#score .cur-R .afing{fill:var(--rh)!important} #score .cur-L .afing{fill:var(--lh)!important}
+#score g.fing{fill:#6b7280}
+#score g.measure.loop-in .staff > path, #score g.measure.loop-in g.staff path:first-child{stroke:#c58a00}
+#loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#555;font-size:1.1rem;background:var(--paper)}
 
-.middle{direction:ltr;display:flex;gap:10px;align-items:stretch;flex:1 1 auto;min-height:0}
-.hand{flex:1;background:var(--panel);border:1px solid var(--line);border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:6px;min-width:0;transition:opacity .2s}
-.hand.idle{opacity:.38}
-.hand svg{flex:1 1 auto;min-height:0;width:100%;max-height:150px}
-.hand .cap{font-size:.9rem;color:var(--muted)}
-.hand .f{fill:var(--bg);stroke:var(--keyline);stroke-width:1.5}
-.hand .f.act{stroke-width:2.5}
-.hand.R .f.act{fill:var(--rh);stroke:var(--rh)} .hand.L .f.act{fill:var(--lh);stroke:var(--lh)}
-.hand text{font-family:var(--body);font-weight:700;font-size:14px;fill:var(--muted);text-anchor:middle}
-.hand text.act{fill:#fff}
-.next{direction:rtl;flex:1.2;background:var(--panel);border:1px solid var(--line);border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:8px;text-align:center;min-width:0}
-.next .big{font-family:var(--display);font-size:clamp(2rem,6vw,3.4rem);line-height:1}
-.next .big.R{color:var(--rh)} .next .big.L{color:var(--lh)}
-.next .sub{color:var(--muted)}
-
-.kbwrap{flex:0 0 auto;height:clamp(140px,27vh,240px);direction:ltr;position:relative;user-select:none;-webkit-user-select:none;touch-action:none}
+.kbwrap{flex:0 0 auto;height:clamp(110px,22vh,200px);direction:ltr;user-select:none;-webkit-user-select:none;touch-action:none;overflow:hidden}
 #kb{position:relative;height:100%;display:flex}
-.wk{flex:1;background:var(--ivory);border:1px solid var(--keyline);border-top:0;border-radius:0 0 7px 7px;position:relative;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;padding-bottom:6px;gap:4px}
-.bk{position:absolute;top:0;height:60%;background:var(--ebony);border-radius:0 0 5px 5px;z-index:2;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;padding-bottom:6px}
-.wk .nm{font-size:.7rem;color:#7a8394;direction:rtl}
-.wk.c .nm{color:#1a2233;font-weight:700}
-.badge{width:30px;height:30px;border-radius:50%;color:#fff;font-weight:700;display:none;align-items:center;justify-content:center;font-size:1rem;box-shadow:0 2px 6px rgba(0,0,0,.25)}
+.wk{flex:1;background:var(--ivory);border:1px solid var(--keyline);border-top:0;border-radius:0 0 6px 6px;position:relative;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;padding-bottom:4px;gap:3px;min-width:0}
+.bk{position:absolute;top:0;height:60%;background:var(--ebony);border-radius:0 0 4px 4px;z-index:2;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;padding-bottom:4px}
+.wk .nm{font-size:.62rem;color:#8a92a2}
+.badge{width:24px;height:24px;border-radius:50%;color:#fff;font-weight:700;display:none;align-items:center;justify-content:center;font-size:.85rem;box-shadow:0 1px 4px rgba(0,0,0,.3)}
 .key.tgt .badge{display:flex}
-.key.tgt.R{background:color-mix(in srgb,var(--rh) 32%,var(--ivory))} .key.tgt.L{background:color-mix(in srgb,var(--lh) 32%,var(--ivory))}
+.wk.tgt.R{background:color-mix(in srgb,var(--rh) 30%,var(--ivory))} .wk.tgt.L{background:color-mix(in srgb,var(--lh) 30%,var(--ivory))}
 .bk.tgt.R{background:var(--rh)} .bk.tgt.L{background:var(--lh)}
 .key.R .badge{background:var(--rh)} .key.L .badge{background:var(--lh)}
-.bk.tgt .badge{background:#fff;color:var(--ink)}
-.key.hit{box-shadow:inset 0 -6px 0 var(--lh)}
-.key.bad{box-shadow:inset 0 -8px 0 var(--bad);background:color-mix(in srgb,var(--bad) 30%,var(--ivory))}
-.key.down{filter:brightness(.88)}
+.bk.tgt .badge{background:#fff;color:#111}
+.key.hit{box-shadow:inset 0 -7px 0 var(--lh)}
+.key.bad{box-shadow:inset 0 -9px 0 var(--bad)}
+.key.down{filter:brightness(.85)}
 
-#notice{background:color-mix(in srgb,var(--bad) 12%,var(--panel));border:1px solid var(--bad);border-radius:10px;padding:8px 12px;font-size:.95rem}
-#done{position:fixed;inset:0;background:rgba(10,14,22,.55);display:flex;align-items:center;justify-content:center;z-index:10;padding:16px}
-#done .box{background:var(--panel);border-radius:18px;padding:28px;max-width:420px;width:100%;text-align:center;display:flex;flex-direction:column;gap:12px}
-#done h3{font-family:var(--display);font-weight:400;font-size:2rem;margin:0}
-#done .row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
-
-@media (max-width:700px){ .middle .hand{display:none} .opt input[type=range]{width:80px} }
-@media (prefers-reduced-motion:reduce){ #notes{transition:none} }
+#done{position:fixed;inset:0;background:rgba(8,12,20,.55);display:flex;align-items:center;justify-content:center;z-index:10;padding:16px}
+.box{background:var(--panel);border-radius:16px;padding:24px;max-width:440px;width:100%;display:flex;flex-direction:column;gap:12px}
+.box h3{font-family:var(--display);font-size:1.8rem;margin:0}
+.box .row{display:flex;gap:8px;flex-wrap:wrap}
+@media (max-width:760px){ .hide-sm{display:none!important} }
 </style>
 </head>
 <body>
 
 <section id="library">
-  <h1>פסנתרון</h1>
-  <p class="lead">בחר שיר, לחץ "התחל להאזין" ונגן בפסנתר. האפליקציה מחכה עד שתנגן את התו הנכון, ומראה איזה קליד ואיזו אצבע. עובד עם המיקרופון של הטאבלט, או עם פסנתר דיגיטלי שמחובר בכבל (MIDI, בכרום).</p>
-  <div class="grid" id="songs"></div>
+  <div class="head">
+    <h1>פסנתרון</h1>
+    <p>תווים אמיתיים, שתי ידיים ואקורדים. האפליקציה מקשיבה (מיקרופון או MIDI) ומחכה עד שתנגן נכון.</p>
+  </div>
+  <div class="filters">
+    <input type="search" id="q" placeholder="חיפוש: שם יצירה או מלחין" aria-label="חיפוש">
+    <span class="seg" role="group" aria-label="רמה" id="levels">
+      <button data-l="0" aria-pressed="true">הכול</button><button data-l="1">קל</button><button data-l="2">בינוני-קל</button><button data-l="3">בינוני</button><button data-l="4">מתקדם</button><button data-l="5">וירטואוזי</button>
+    </span>
+    <label class="btn" for="file">＋ ייבוא קובץ תווים</label>
+    <input type="file" id="file" accept=".musicxml,.xml,.mxl,.krn,.mei,.abc" hidden multiple>
+  </div>
+  <div id="mine" hidden><h2 class="sect">השירים שלי</h2><div class="grid" id="mineGrid"></div></div>
+  <div class="grid" id="grid"></div>
+  <p class="foot">ייבוא: קבצי MusicXML (‏.musicxml / .mxl, למשל מ-MuseScore), Humdrum ‏(.krn), MEI או ABC. היצירות המובנות הן נחלת הכלל או ברישיון פתוח. המקור והרישיון של כל יצירה מופיעים במסך הנגינה, תחת "הגדרות".</p>
 </section>
 
 <section id="practice" hidden>
   <div class="bar">
-    <button id="back" aria-label="חזרה לרשימת השירים">→ שירים</button>
+    <button id="back" aria-label="חזרה לספרייה">→</button>
     <h2 id="title"></h2>
-    <span id="progress"></span>
+    <span id="pos"></span>
   </div>
   <div class="bar">
-    <button id="listen" class="primary">🎤 התחל להאזין</button>
-    <button id="demo">▶ השמע לי</button>
-    <button id="restart">↺ מההתחלה</button>
-    <span class="seg" role="group" aria-label="איזו יד מנגנת">
-      <button data-hands="both" aria-pressed="true">שתי ידיים</button>
-      <button data-hands="R" aria-pressed="false">ימין</button>
-      <button data-hands="L" aria-pressed="false">שמאל</button>
+    <button id="listen" class="primary">🎤 האזנה</button>
+    <button id="demo">▶ השמע</button>
+    <button id="restart">⏮</button>
+    <span class="seg" role="group" aria-label="ידיים">
+      <button data-hands="both" aria-pressed="true">שתי ידיים</button><button data-hands="R">ימין</button><button data-hands="L">שמאל</button>
     </span>
-    <label class="opt"><input type="checkbox" id="octave" checked> לקבל גם אוקטבה אחרת</label>
-    <label class="opt">רגישות <input type="range" id="sens" min="0" max="100" value="55"></label>
+    <button id="loopBtn" aria-pressed="false">🔁 לולאה</button>
+    <button id="setBtn" aria-expanded="false">⚙ הגדרות</button>
     <span id="status"><span id="meter"><i></i></span><span id="heard">—</span></span>
   </div>
-  <div id="notice" hidden></div>
-  <div class="staffwrap"><svg id="staff" viewBox="0 0 1000 270" dir="ltr" aria-label="תווים"></svg></div>
-  <div class="middle">
-    <div class="hand L" id="handL"></div>
-    <div class="next" aria-live="polite"><div class="big" id="nextName"></div><div class="sub" id="nextSub"></div></div>
-    <div class="hand R" id="handR"></div>
+  <div id="panel" hidden>
+    <label>מתיבה <input type="number" id="loopFrom" min="1" value="1"></label>
+    <label>עד <input type="number" id="loopTo" min="1" value="4"></label>
+    <label>מהירות השמעה <input type="range" id="speed" min="30" max="130" value="80"> <span id="speedV">80%</span></label>
+    <label><input type="checkbox" id="accomp" checked> לנגן את היד השנייה</label>
+    <label><input type="checkbox" id="octave"> לקבל אוקטבה אחרת</label>
+    <label><input type="checkbox" id="fingers" checked> מספרי אצבעות</label>
+    <label>רגישות מיקרופון <input type="range" id="sens" min="0" max="100" value="50"></label>
+    <span class="seg"><button id="zoomOut" aria-label="הקטן תווים">א−</button><button id="zoomIn" aria-label="הגדל תווים">א+</button></span>
+    <span class="seg"><button data-layout="page" aria-pressed="true">דף</button><button data-layout="line">שורה אחת</button></span>
+    <span id="midiState" class="sub"></span>
+    <span id="credit" class="sub"></span>
   </div>
+  <div id="notice" hidden></div>
+  <div id="scorewrap"><div id="score"></div><div id="loading">טוען תווים…</div></div>
   <div class="kbwrap"><div id="kb"></div></div>
 </section>
 
-<div id="done" hidden>
-  <div class="box">
-    <h3>כל הכבוד!</h3>
-    <div id="doneStats"></div>
-    <div class="row"><button class="primary" id="again">שוב</button><button id="toLib">לשירים</button></div>
-  </div>
-</div>
+<div id="done" hidden><div class="box">
+  <h3 id="doneTitle">כל הכבוד!</h3>
+  <div id="doneStats"></div>
+  <div class="row"><button class="primary" id="again">שוב מההתחלה</button><button id="toLib">לספרייה</button></div>
+</div></div>
+<div id="confirm" hidden style="position:fixed;inset:0;background:rgba(8,12,20,.55);display:flex;align-items:center;justify-content:center;z-index:11;padding:16px"><div class="box">
+  <div id="confirmText"></div>
+  <div class="row"><button class="primary" id="confirmYes">מחק</button><button id="confirmNo">ביטול</button></div>
+</div></div>
 
-<script id="core">
-// ---- pure logic (tested in test.js) ----
-const NOTE_NAMES=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
-const HEB={C:'דו',D:'רה',E:'מי',F:'פה',G:'סול',A:'לה',B:'סי'};
-const FINGER_NAMES=['','אגודל','אצבע','אמה','קמיצה','זרת'];
-function noteToMidi(s){const m=/^([A-G])(#?)(\d)$/.exec(s);if(!m)throw new Error('bad note '+s);return (+m[3]+1)*12+{C:0,D:2,E:4,F:5,G:7,A:9,B:11}[m[1]]+(m[2]?1:0)}
-function hebName(m){const n=NOTE_NAMES[m%12];return HEB[n[0]]+(n[1]?'#':'')}
-function isBlack(m){return NOTE_NAMES[m%12].length>1}
-function freqToMidi(f){return Math.round(69+12*Math.log2(f/440))}
-// token: [l]NOTE,beats,finger   (l = left hand)
-function parseSong(str){return str.trim().split(/\s+/).map(t=>{const L=t[0]==='l';const [n,b,f]=(L?t.slice(1):t).split(',');return{midi:noteToMidi(n),beats:+b,finger:+f,hand:L?'L':'R'}})}
-
-// YIN pitch detector. buf length >= 2048. Returns Hz or null.
-function yin(buf,sr,threshold=0.15){
-  const W=1024,minTau=Math.floor(sr/1400),maxTau=Math.min(buf.length-W-1,Math.floor(sr/72));
-  const d=new Float32Array(maxTau+2);
-  for(let tau=1;tau<=maxTau+1;tau++){let s=0;for(let i=0;i<W;i++){const x=buf[i]-buf[i+tau];s+=x*x}d[tau]=s}
-  let run=0;d[0]=1;
-  for(let tau=1;tau<=maxTau+1;tau++){run+=d[tau];d[tau]=run?d[tau]*tau/run:1}
-  let tau=-1;
-  for(let t=minTau;t<=maxTau;t++){if(d[t]<threshold){while(t<maxTau&&d[t+1]<d[t])t++;tau=t;break}}
-  if(tau<2)return null;
-  const a=d[tau-1],b=d[tau],c=d[tau+1],den=a+c-2*b;
-  return sr/(tau+(den?(a-c)/(2*den):0));
-}
-
-// Wait-mode judge. Feed one frame at a time; tells you when the expected note was played.
-// A note that is still ringing is never accepted twice: repeating it needs a new attack (onset).
-function createJudge(o){
-  o=Object.assign({gate:.01,onsetRatio:1.35,stableFrames:2,refractoryMs:120},o);
-  let last=null,onset=false,env=0,cand=null,stable=0,acceptedAt=-1e9;
-  const same=(a,b,oct)=>a!=null&&b!=null&&(oct?(a-b)%12===0:a===b);
-  return{
-    set gate(g){o.gate=g},
-    hold(m,t){last=m;onset=false;acceptedAt=t;cand=null;stable=0},
-    frame(t,rms,midi,expected,oct){
-      if(rms>o.gate*1.5&&rms>env*o.onsetRatio&&t-acceptedAt>o.refractoryMs)onset=true;
-      env=env*.6+rms*.4;
-      if(rms<o.gate){last=null;cand=null;stable=0;return{midi:null}}
-      if(midi==null){stable=0;return{midi:null}}
-      if(midi===cand)stable++;else{cand=midi;stable=1}
-      if(stable<o.stableFrames)return{midi};
-      const ringing=same(midi,last,oct)&&!onset;
-      if(!ringing&&same(midi,expected,oct)){last=midi;onset=false;acceptedAt=t;stable=0;return{midi,accepted:true}}
-      if(!ringing&&!same(midi,expected,oct)&&stable===o.stableFrames)return{midi,wrong:true};
-      return{midi};
-    }
-  };
-}
-
-const SONGS=[
-  {id:'scale',title:'סולם דו מז׳ור',sub:'תרגיל: יד ימין ואז יד שמאל',level:'קל',tempo:80,
-   notes:'C4,1,1 D4,1,2 E4,1,3 F4,1,1 G4,1,2 A4,1,3 B4,1,4 C5,2,5 lC3,1,5 lD3,1,4 lE3,1,3 lF3,1,2 lG3,1,1 lA3,1,3 lB3,1,2 lC4,2,1'},
-  {id:'yonatan',title:'יונתן הקטן',sub:'שיר ילדים עממי',level:'קל',tempo:100,
-   notes:'G4,1,5 E4,1,3 E4,2,3 F4,1,4 D4,1,2 D4,2,2 C4,1,1 D4,1,2 E4,1,3 F4,1,4 G4,1,5 G4,1,5 G4,2,5 G4,1,5 E4,1,3 E4,2,3 F4,1,4 D4,1,2 D4,2,2 C4,1,1 E4,1,3 G4,1,5 G4,1,5 C4,4,1 D4,1,2 D4,1,2 D4,1,2 D4,1,2 D4,1,2 E4,1,3 F4,2,4 E4,1,3 E4,1,3 E4,1,3 E4,1,3 E4,1,3 F4,1,4 G4,2,5 G4,1,5 E4,1,3 E4,2,3 F4,1,4 D4,1,2 D4,2,2 C4,1,1 E4,1,3 G4,1,5 G4,1,5 C4,4,1'},
-  {id:'mary',title:'למרי הייתה כבשה',sub:'Mary Had a Little Lamb',level:'קל',tempo:100,
-   notes:'E4,1,3 D4,1,2 C4,1,1 D4,1,2 E4,1,3 E4,1,3 E4,2,3 D4,1,2 D4,1,2 D4,2,2 E4,1,3 G4,1,5 G4,2,5 E4,1,3 D4,1,2 C4,1,1 D4,1,2 E4,1,3 E4,1,3 E4,1,3 E4,1,3 D4,1,2 D4,1,2 E4,1,3 D4,1,2 C4,4,1'},
-  {id:'jacques',title:'אחינו יעקב',sub:'Frère Jacques · כולל יד שמאל',level:'קל',tempo:100,
-   notes:'C4,1,1 D4,1,2 E4,1,3 C4,1,1 C4,1,1 D4,1,2 E4,1,3 C4,1,1 E4,1,3 F4,1,4 G4,2,5 E4,1,3 F4,1,4 G4,2,5 G4,.5,4 A4,.5,5 G4,.5,4 F4,.5,3 E4,1,2 C4,1,1 G4,.5,4 A4,.5,5 G4,.5,4 F4,.5,3 E4,1,2 C4,1,1 C4,1,1 lG3,1,1 C4,2,1 C4,1,1 lG3,1,1 C4,2,1'},
-  {id:'jingle',title:'ג׳ינגל בלס',sub:'פזמון',level:'קל',tempo:110,
-   notes:'E4,1,3 E4,1,3 E4,2,3 E4,1,3 E4,1,3 E4,2,3 E4,1,3 G4,1,5 C4,1.5,1 D4,.5,2 E4,4,3 F4,1,4 F4,1,4 F4,1.5,4 F4,.5,4 F4,1,4 E4,1,3 E4,1,3 E4,.5,3 E4,.5,3 E4,1,3 D4,1,2 D4,1,2 E4,1,3 D4,2,2 G4,2,5 E4,1,3 E4,1,3 E4,2,3 E4,1,3 E4,1,3 E4,2,3 E4,1,3 G4,1,5 C4,1.5,1 D4,.5,2 E4,4,3 F4,1,4 F4,1,4 F4,1.5,4 F4,.5,4 F4,1,4 E4,1,3 E4,1,3 E4,.5,3 E4,.5,3 G4,1,5 G4,1,5 F4,1,4 D4,1,2 C4,4,1'},
-  {id:'ode',title:'אודה לשמחה',sub:'בטהובן · כולל יד שמאל',level:'קל-בינוני',tempo:100,
-   notes:'E4,1,3 E4,1,3 F4,1,4 G4,1,5 G4,1,5 F4,1,4 E4,1,3 D4,1,2 C4,1,1 C4,1,1 D4,1,2 E4,1,3 E4,1.5,3 D4,.5,2 D4,2,2 E4,1,3 E4,1,3 F4,1,4 G4,1,5 G4,1,5 F4,1,4 E4,1,3 D4,1,2 C4,1,1 C4,1,1 D4,1,2 E4,1,3 D4,1.5,2 C4,.5,1 C4,2,1 D4,1,2 D4,1,2 E4,1,3 C4,1,1 D4,1,2 E4,.5,3 F4,.5,4 E4,1,3 C4,1,1 D4,1,2 E4,.5,3 F4,.5,4 E4,1,3 D4,1,2 C4,1,1 D4,1,2 lG3,2,1 E4,1,3 E4,1,3 F4,1,4 G4,1,5 G4,1,5 F4,1,4 E4,1,3 D4,1,2 C4,1,1 C4,1,1 D4,1,2 E4,1,3 D4,1.5,2 C4,.5,1 C4,2,1'},
-  {id:'minuet',title:'מינואט בסול',sub:'פצולד (מיוחס לבאך) · 8 תיבות',level:'בינוני',tempo:90,
-   notes:'D5,1,5 G4,.5,1 A4,.5,2 B4,.5,3 C5,.5,4 D5,1,5 G4,1,1 G4,1,1 E5,1,3 C5,.5,1 D5,.5,2 E5,.5,3 F#5,.5,4 G5,1,5 G4,1,1 G4,1,1 C5,1,4 D5,.5,5 C5,.5,4 B4,.5,3 A4,.5,2 B4,1,3 C5,.5,4 B4,.5,3 A4,.5,2 G4,.5,1 F#4,1,2 G4,.5,1 A4,.5,2 B4,.5,3 G4,.5,1 A4,3,2'},
-  {id:'elise',title:'לאליזה',sub:'בטהובן · פתיחה, ידיים לסירוגין',level:'בינוני',tempo:80,
-   notes:'E5,.5,5 D#5,.5,4 E5,.5,5 D#5,.5,4 E5,.5,5 B4,.5,2 D5,.5,4 C5,.5,3 A4,1.5,1 lA2,.5,5 lE3,.5,2 lA3,.5,1 C4,.5,1 E4,.5,2 A4,.5,3 B4,1.5,4 lE2,.5,5 lE3,.5,2 lG#3,.5,1 E4,.5,1 G#4,.5,2 B4,.5,3 C5,1.5,4 lA2,.5,5 lE3,.5,2 lA3,.5,1 E4,.5,1 E5,.5,5 D#5,.5,4 E5,.5,5 D#5,.5,4 E5,.5,5 B4,.5,2 D5,.5,4 C5,.5,3 A4,1.5,1 lA2,.5,5 lE3,.5,2 lA3,.5,1 C4,.5,1 E4,.5,2 A4,.5,3 B4,1.5,4 lE2,.5,5 lE3,.5,2 lG#3,.5,1 E4,.5,1 C5,.5,4 B4,.5,3 A4,2,2'},
-].map(s=>({...s,notes:parseSong(s.notes)}));
-</script>
-
-<script>
-// ---- UI ----
-const $=s=>document.querySelector(s);
-let song=null,idx=0,mistakes=0,startedAt=0,hands='both';
-let actx=null,analyser=null,micStream=null,loopTimer=null,ignoreMicUntil=0,demoTimer=null,autoTimer=null,wakeLock=null;
-const judge=createJudge();
-const keyEls=new Map();
-
-// library
-$('#songs').innerHTML=SONGS.map(s=>{
-  const hs=new Set(s.notes.map(n=>n.hand));
-  return `<button class="card" data-id="${s.id}"><b>${s.title}</b><small>${s.sub}</small>
-    <span class="chips"><span class="chip">${s.level}</span><span class="chip">${s.notes.length} תווים</span>
-    ${hs.has('R')?'<span class="chip r">יד ימין</span>':''}${hs.has('L')?'<span class="chip l">יד שמאל</span>':''}</span></button>`}).join('');
-$('#songs').addEventListener('click',e=>{const c=e.target.closest('.card');if(c)openSong(SONGS.find(s=>s.id===c.dataset.id))});
-
-function openSong(s){
-  song=s;$('#library').hidden=true;$('#practice').hidden=false;$('#title').textContent=s.title;
-  buildStaff();buildKeyboard();restart();
-}
-$('#back').onclick=()=>{stopDemo();stopListening();$('#practice').hidden=true;$('#library').hidden=false};
-
-// ---- staff ----
-const UNIT=58,CUR_X=300,TRE_BOTTOM=118,BAS_BOTTOM=212;
-function diat(m){const pc=m%12;return (Math.floor(m/12)-1)*7+[0,0,1,1,2,3,3,4,4,5,5,6][pc]}
-function noteY(n){const d=diat(n.midi);return n.hand==='R'?TRE_BOTTOM-(d-30)*6:BAS_BOTTOM-(d-18)*6}
-let noteX=[];
-function buildStaff(){
-  const svg=$('#staff');let x=0;noteX=song.notes.map(n=>{const v=x;x+=Math.max(n.beats,.75)*UNIT;return v});
-  const lines=[];for(let i=0;i<5;i++){lines.push(TRE_BOTTOM-i*12,BAS_BOTTOM-i*12)}
-  let notes='';
-  song.notes.forEach((n,i)=>{
-    const d=diat(n.midi),y=noteY(n),cx=noteX[i];
-    let led='';
-    const ledgers=n.hand==='R'?{lo:28,hi:40,base:30}:{lo:16,hi:28,base:18};
-    const ly=dd=>(n.hand==='R'?TRE_BOTTOM-(dd-30)*6:BAS_BOTTOM-(dd-18)*6);
-    if(d<=ledgers.lo)for(let k=ledgers.lo;k>=d;k-=2)led+=`<line class="ln" x1="${cx-12}" x2="${cx+12}" y1="${ly(k)}" y2="${ly(k)}"/>`;
-    if(d>=ledgers.hi)for(let k=ledgers.hi;k<=d;k+=2)led+=`<line class="ln" x1="${cx-12}" x2="${cx+12}" y1="${ly(k)}" y2="${ly(k)}"/>`;
-    const mid=n.hand==='R'?34:22,up=d<mid,sx=up?cx+6.3:cx-6.3,sy2=up?y-36:y+36;
-    const hollow=n.beats>=2;
-    const flag=n.beats<1?`<path d="M${sx} ${sy2} q 9 ${up?8:-8} 7 ${up?20:-20}" fill="none" stroke-width="2"/>`:'';
-    const dot=n.beats%1===.5&&n.beats>1?`<circle cx="${cx+13}" cy="${y-2}" r="2.3"/>`:'';
-    const acc=isBlack(n.midi)?`<text x="${cx-17}" y="${y+5}" style="font-size:18px">♯</text>`:'';
-    notes+=`<g class="n ${n.hand}" id="n${i}"><rect class="hl" x="${cx-UNIT/2+6}" y="8" width="${UNIT-12}" height="254" rx="8"/>${led}
-      <ellipse class="${hollow?'hollow':''}" cx="${cx}" cy="${y}" rx="7.4" ry="5.6" transform="rotate(-20 ${cx} ${y})" stroke-width="1.8"/>
-      <line x1="${sx}" x2="${sx}" y1="${y}" y2="${sy2}" stroke-width="1.6"/>${flag}${dot}${acc}
-      <text class="fing" x="${cx}" y="26">${n.finger}</text><text class="nm" x="${cx}" y="258">${hebName(n.midi)}</text></g>`;
-  });
-  const staffLines=x2=>lines.map(y=>`<line class="ln" x1="0" x2="${x2}" y1="${y}" y2="${y}"/>`).join('');
-  // order matters: lines, scrolling notes, then the clef panel drawn over notes that scroll past it
-  svg.innerHTML=`${staffLines(1000)}<g id="notes">${notes}</g>
-    <rect class="clefbg" x="0" y="0" width="92" height="270"/>${staffLines(92)}
-    <line class="ln" x1="1" x2="1" y1="${TRE_BOTTOM-48}" y2="${BAS_BOTTOM}"/>
-    <text class="clef" x="16" y="${TRE_BOTTOM+4}" style="font-size:62px">𝄞</text>
-    <text class="clef" x="18" y="${BAS_BOTTOM-18}" style="font-size:42px">𝄢</text>`;
-}
-
-// ---- keyboard ----
-function buildKeyboard(){
-  const ms=song.notes.map(n=>n.midi);let lo=Math.min(...ms),hi=Math.max(...ms);
-  lo=lo-lo%12;hi=hi+(11-hi%12);if(hi-lo<23)hi=lo+23;
-  const kb=$('#kb');kb.innerHTML='';keyEls.clear();
-  const whites=[];for(let m=lo;m<=hi;m++)if(!isBlack(m))whites.push(m);
-  const W=whites.length,bw=100/W*.62;
-  for(let m=lo;m<=hi;m++){
-    const el=document.createElement('div');el.dataset.m=m;
-    el.innerHTML=`<span class="badge"></span>`;
-    if(isBlack(m)){el.className='key bk';const wi=whites.indexOf(m+1);el.style.left=(wi/W*100-bw/2)+'%';el.style.width=bw+'%'}
-    else{el.className='key wk'+(m%12===0?' c':'');el.insertAdjacentHTML('beforeend',`<span class="nm">${hebName(m)}${m%12===0?Math.floor(m/12)-1:''}</span>`)}
-    kb.appendChild(el);keyEls.set(m,el);
-  }
-}
-$('#kb').addEventListener('pointerdown',e=>{
-  const k=e.target.closest('.key');if(!k)return;e.preventDefault();
-  const m=+k.dataset.m;flash(m,'down',150);tone(m,.7);handleInput(m,'tap');
-});
-
-// ---- hands ----
-const FINGERS=[{n:1,x:4,y:70,w:19,h:40,r:-28},{n:2,x:30,y:22,w:18,h:64,r:-6},{n:3,x:51,y:10,w:18,h:76,r:0},{n:4,x:72,y:18,w:18,h:68,r:5},{n:5,x:92,y:38,w:16,h:50,r:12}];
-function handSvg(side,active){
-  const fs=FINGERS.map(f=>side==='L'?{...f,x:120-f.x-f.w,r:-f.r}:f);
-  const palmX=side==='L'?12:26;
-  return `<svg viewBox="0 0 120 150" aria-hidden="true"><rect class="f" x="${palmX}" y="78" width="82" height="64" rx="20"/>
-    ${fs.map(f=>{const cx=f.x+f.w/2,by=f.y+f.h,on=f.n===active;
-      return `<g transform="rotate(${f.r} ${cx} ${by})"><rect class="f${on?' act':''}" x="${f.x}" y="${f.y}" width="${f.w}" height="${f.h+14}" rx="${f.w/2}"/>
-      <text class="${on?'act':''}" x="${cx}" y="${f.y+17}">${f.n}</text></g>`}).join('')}</svg>`;
-}
-
-// ---- practice flow ----
-const playable=n=>hands==='both'||n.hand===hands;
-function restart(){
-  stopDemo();clearTimeout(autoTimer);idx=0;mistakes=0;startedAt=0;$('#done').hidden=true;
-  render();autoAdvance();
-}
-$('#restart').onclick=restart;
-document.querySelectorAll('[data-hands]').forEach(b=>b.onclick=()=>{
-  hands=b.dataset.hands;document.querySelectorAll('[data-hands]').forEach(x=>x.setAttribute('aria-pressed',x===b));restart();
-});
-
-function render(){
-  const n=song.notes[idx];
-  $('#progress').textContent=`${Math.min(idx,song.notes.length)} / ${song.notes.length}`;
-  song.notes.forEach((_,i)=>{const g=document.getElementById('n'+i);g.classList.toggle('done',i<idx);g.classList.toggle('cur',i===idx)});
-  $('#notes').style.transform=`translateX(${CUR_X-(noteX[Math.min(idx,noteX.length-1)]||0)}px)`;
-  keyEls.forEach(el=>el.classList.remove('tgt','R','L'));
-  $('#handL').className='hand L idle';$('#handR').className='hand R idle';
-  if(!n){$('#nextName').textContent='';$('#nextSub').textContent='';$('#handL').innerHTML=handSvg('L');$('#handR').innerHTML=handSvg('R');return}
-  const k=keyEls.get(n.midi);if(k){k.classList.add('tgt',n.hand);k.querySelector('.badge').textContent=n.finger}
-  $('#hand'+n.hand).classList.remove('idle');
-  $('#handL').innerHTML=handSvg('L',n.hand==='L'?n.finger:0)+`<div class="cap">יד שמאל</div>`;
-  $('#handR').innerHTML=handSvg('R',n.hand==='R'?n.finger:0)+`<div class="cap">יד ימין</div>`;
-  const nm=$('#nextName');nm.textContent=hebName(n.midi);nm.className='big '+n.hand;
-  $('#nextSub').textContent=`${n.hand==='R'?'יד ימין':'יד שמאל'} · אצבע ${n.finger} (${FINGER_NAMES[n.finger]})${playable(n)?'':' · מתנגן אוטומטית'}`;
-}
-
-function handleInput(m,src){
-  const n=song.notes[idx];if(!n||demoTimer||!playable(n))return;
-  const oct=$('#octave').checked;
-  const ok=m===n.midi||(oct&&(m-n.midi)%12===0);
-  if(src!=='mic'){ if(!ok){mistakes++;flash(m,'bad',400);return} }
-  if(!startedAt)startedAt=performance.now();
-  flash(n.midi,'hit',250);idx++;render();
-  if(idx>=song.notes.length)return finish();
-  autoAdvance();
-}
-// notes for the hand you're not practicing play by themselves
-function autoAdvance(){
-  clearTimeout(autoTimer);const n=song.notes[idx];if(!n||playable(n))return;
-  autoTimer=setTimeout(()=>{tone(n.midi,.5);flash(n.midi,'hit',250);idx++;render();
-    if(idx>=song.notes.length)finish();else autoAdvance()},60000/song.tempo*Math.max(.5,song.notes[idx-1]?.beats||1));
-}
-function finish(){
-  const secs=startedAt?Math.round((performance.now()-startedAt)/1000):0;
-  $('#doneStats').textContent=`ניגנת ${song.notes.length} תווים${secs?` ב-${secs} שניות`:''} · ${mistakes?`${mistakes} תווים שגויים`:'בלי טעויות'}`;
-  $('#done').hidden=false;
-}
-$('#again').onclick=restart;
-$('#toLib').onclick=()=>{$('#done').hidden=true;$('#back').click()};
-
-function flash(m,cls,ms){const el=keyEls.get(m);if(!el)return;el.classList.add(cls);setTimeout(()=>el.classList.remove(cls),ms)}
-
-// ---- sound ----
-function ctx(){if(!actx)actx=new (window.AudioContext||window.webkitAudioContext)();if(actx.state==='suspended')actx.resume();return actx}
-function tone(m,dur){
-  const c=ctx(),t=c.currentTime,f=440*Math.pow(2,(m-69)/12),g=c.createGain();
-  g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.32,t+.008);g.gain.exponentialRampToValueAtTime(.001,t+dur+.5);g.connect(c.destination);
-  [[1,'triangle',1],[2,'sine',.25],[3,'sine',.08]].forEach(([h,type,a])=>{const o=c.createOscillator(),og=c.createGain();o.type=type;o.frequency.value=f*h;og.gain.value=a;o.connect(og).connect(g);o.start(t);o.stop(t+dur+.55)});
-  ignoreMicUntil=performance.now()+(dur+.5)*1000;judge.hold(m,performance.now());
-}
-
-// demo: play from the current note to the end
-$('#demo').onclick=()=>{if(demoTimer)return stopDemo();
-  const from=idx;let i=from;$('#demo').textContent='■ עצור';
-  const step=()=>{if(i>=song.notes.length){stopDemo();idx=from;render();autoAdvance();return}
-    const n=song.notes[i],dur=60/song.tempo*n.beats;idx=i;render();tone(n.midi,Math.min(dur,1.2));i++;demoTimer=setTimeout(step,dur*1000)};
-  clearTimeout(autoTimer);demoTimer=-1;step();
-};
-function stopDemo(){if(demoTimer){clearTimeout(demoTimer);demoTimer=null;$('#demo').textContent='▶ השמע לי'}}
-
-// ---- microphone ----
-function gateFromSlider(){return .05*Math.pow(.04,$('#sens').value/100)} // 0.05 (low) .. 0.002 (high)
-$('#sens').oninput=()=>{judge.gate=gateFromSlider()};judge.gate=gateFromSlider();
-$('#listen').onclick=()=>micStream?stopListening():startListening();
-async function startListening(){
-  const note=$('#notice');note.hidden=true;
-  if(!navigator.mediaDevices?.getUserMedia){note.textContent='הדפדפן לא מאפשר מיקרופון כאן. פתח את הדף בכתובת שמתחילה ב-https, בכרום או ספארי.';note.hidden=false;return}
-  try{micStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}})}
-  catch(e){note.textContent='אין גישה למיקרופון. אשר גישה בהגדרות הדפדפן ונסה שוב.';note.hidden=false;return}
-  const c=ctx();analyser=c.createAnalyser();analyser.fftSize=2048;c.createMediaStreamSource(micStream).connect(analyser);
-  const buf=new Float32Array(analyser.fftSize);
-  $('#listen').textContent='⏹ הפסק להאזין';$('#listen').classList.add('on');
-  try{wakeLock=await navigator.wakeLock?.request('screen')}catch{}
-  let lastWrong=null;
-  loopTimer=setInterval(()=>{
-    analyser.getFloatTimeDomainData(buf);
-    let s=0;for(let i=0;i<buf.length;i++)s+=buf[i]*buf[i];const rms=Math.sqrt(s/buf.length);
-    $('#meter i').style.width=Math.min(100,rms*800)+'%';
-    const now=performance.now();if(now<ignoreMicUntil||demoTimer)return;
-    const hz=rms>gateFromSlider()?yin(buf,c.sampleRate):null;
-    const midi=hz?freqToMidi(hz):null;
-    const n=song?.notes[idx];
-    const r=judge.frame(now,rms,midi,n&&playable(n)?n.midi:-99,$('#octave').checked);
-    $('#heard').textContent=r.midi!=null?'שומע: '+hebName(r.midi):'—';
-    if(r.accepted)handleInput(r.midi,'mic');
-    else if(r.wrong&&n&&playable(n)){mistakes++;flash(r.midi,'bad',400)}
-  },30);
-}
-function stopListening(){
-  clearInterval(loopTimer);loopTimer=null;micStream?.getTracks().forEach(t=>t.stop());micStream=null;
-  try{wakeLock?.release()}catch{}wakeLock=null;
-  $('#listen').textContent='🎤 התחל להאזין';$('#listen').classList.remove('on');$('#heard').textContent='—';$('#meter i').style.width='0';
-}
-
-// ---- MIDI keyboard (Chrome / Android) ----
-navigator.requestMIDIAccess?.().then(acc=>{
-  const bind=()=>acc.inputs.forEach(inp=>inp.onmidimessage=e=>{const [st,m,v]=e.data;if((st&0xf0)===0x90&&v>0&&song&&!$('#practice').hidden){flash(m,'down',150);handleInput(m,'midi')}});
-  bind();acc.onstatechange=bind;
-}).catch(()=>{});
-</script>
+<script type="module" src="js/app.js"></script>
 </body>
 </html>

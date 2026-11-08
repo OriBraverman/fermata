@@ -1,0 +1,97 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Detector harness</title>
+<pre id="out">running…</pre>
+<script type="module">
+// Renders real piano samples (with room reverb and noise) offline, then runs the mic detector +
+// wait judge over the audio exactly as the app does, and reports missed / false steps.
+import { Piano } from '../js/audio.js';
+import { Detector, WaitJudge } from '../js/engine.js';
+const SR = 48000, HOP = 25;
+const out = document.getElementById('out'); const log = s => (out.textContent += '\n' + s);
+out.textContent = '';
+
+// steps: [{t (s), keys:[midi], vel}] ; expect: what the judge waits for at each step (default = keys)
+async function render(steps, { reverb = 0.25, noise = 0.003, len } = {}) {
+  len ||= steps[steps.length - 1].t + 2;
+  const ctx = new OfflineAudioContext(1, Math.ceil(len * SR), SR), piano = new Piano(ctx); await piano.load();
+  const dry = ctx.createGain(); dry.connect(ctx.destination);
+  if (reverb) { const ir = ctx.createBuffer(1, SR * 0.9, SR), d = ir.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (SR * 0.18)); const cv = ctx.createConvolver(); cv.buffer = ir; const wg = ctx.createGain(); wg.gain.value = reverb; dry.connect(cv).connect(wg).connect(ctx.destination); }
+  for (const s of steps) for (const k of s.keys) piano.play(k, s.dur || 0.9, s.vel ?? 0.6, s.t, dry);
+  const buf = await ctx.startRendering(), x = buf.getChannelData(0);
+  for (let i = 0; i < x.length; i++) x[i] += (Math.random() * 2 - 1) * noise;
+  return x;
+}
+
+function judgeRun(x, steps, { octave = false, detOpts, trace = false } = {}) {
+  const det = new Detector(SR, detOpts), j = new WaitJudge(); let k = 0, missed = [], falseAcc = [], lat = [];
+  const want = s => s.expect || s.keys;
+  j.setTarget(want(steps[0]), octave);
+  const accT = [];
+  for (let i = 8192; i < x.length; i += SR * HOP / 1000) {
+    det.setTargets(k < steps.length ? want(steps[k]) : []);
+    const t = i / SR * 1000, r = det.process(x.subarray(i - 8192, i), t);
+    // not recognised within 700 ms of being played: missed
+    while (k < steps.length && t > steps[k].t * 1000 + 700) { if (!steps[k].wrong) missed.push(k); k++; if (k < steps.length) j.setTarget(want(steps[k]), octave, t); }
+    const res = j.feed(r.onsets, t, r.db);
+    if (trace && (res.hit.length || res.accepted)) log(`  t=${Math.round(t)} step ${k} (${want(steps[k] || {}).join('+')} @${steps[k] && Math.round(steps[k].t * 1000)}) hit ${res.hit} ${res.accepted ? 'ACCEPT' : ''}`);
+    if (res.accepted && k < steps.length) {
+      const d = t - steps[k].t * 1000;
+      if (d < -20 || steps[k].wrong) falseAcc.push(k); else lat.push(d);
+      accT.push({ t, keys: want(steps[k]) });
+      k++; if (k < steps.length) j.setTarget(want(steps[k]), octave, t);
+    }
+  }
+  while (k < steps.length) { if (!steps[k].wrong) missed.push(k); k++; }
+  return { missed, falseAcc, lat: lat.length ? Math.round(lat.reduce((a, b) => a + b) / lat.length) : null, maxLat: Math.round(Math.max(0, ...lat)) };
+}
+const diag = new URLSearchParams(location.search).get('diag');
+if (diag) {
+  const m = +diag, x = await render([{ t: 0.3, keys: [m] }, { t: 1.0, keys: [m] }], { reverb: 0.25 }), det = new Detector(SR);
+  log('t   db[m-1] db[m] db[m+1] floor onsets');
+  for (let i = 8192; i < x.length; i += SR * HOP / 1000) {
+    const t = Math.round(i / SR * 1000), r = det.process(x.subarray(i - 8192, i), t);
+    if (t > 200 && t < 1500) log(`${t} ${r.db[m - 1].toFixed(1)} ${r.db[m].toFixed(1)} ${r.db[m + 1].toFixed(1)} ${r.floor.toFixed(1)} ${r.onsets.join(',')}`);
+  }
+  window.harnessDone = true; throw 'diag done';
+}
+const seqSteps =(list, gap) => list.map((keys, i) => ({ t: 0.5 + i * gap, keys: Array.isArray(keys) ? keys : [keys] }));
+const tests = {
+  'scale C2..C7, 4/s': seqSteps(Array.from({ length: 36 }, (_, i) => 36 + [0, 2, 4, 5, 7, 9, 11][i % 7] + 12 * Math.floor(i / 7)), 0.25),
+  'chromatic A1..A6, 3/s': seqSteps(Array.from({ length: 61 }, (_, i) => 33 + i), 0.33),
+  'triads both hands': seqSteps([[48, 60, 64, 67], [53, 60, 65, 69], [55, 59, 62, 67], [48, 60, 64, 67], [45, 57, 60, 64], [50, 57, 62, 65], [43, 55, 59, 62], [36, 48, 52, 55, 60]], 0.7),
+  'repeated note x6': seqSteps([64, 64, 64, 64, 64, 64], 0.3),
+  'repeated chord x4': seqSteps([[60, 64, 67], [60, 64, 67], [60, 64, 67], [60, 64, 67]], 0.45),
+  'melody over held bass': [{ t: 0.5, keys: [36, 43], dur: 4, vel: 0.8 }, ...seqSteps([72, 74, 76, 77, 79, 77, 76, 74, 72], 0.35).map(s => ({ ...s, t: s.t + 0.3, vel: 0.4 }))].map((s, i) => i === 0 ? s : s),
+  'Für Elise opening': seqSteps([76, 75, 76, 75, 76, 71, 74, 72, [69, 45], 52, 57, 60, 64, 69, [71, 40], 52, 56, 64, 68, 71, [72, 45], 52, 57], 0.2),
+};
+const why = new URLSearchParams(location.search).get('why');
+if (why) { // for each step: best frame in the 300 ms after it starts — why was it (not) detected?
+  const steps = tests[why], x = await render(steps), det = new Detector(SR), frames = [];
+  for (let i = 8192; i < x.length; i += SR * HOP / 1000) { const t = i / SR * 1000, r = det.process(x.subarray(i - 8192, i), t); frames.push({ t, db: Float32Array.from(r.db), rise: Float32Array.from(det.rise), floor: r.floor, on: r.onsets, attack: r.attack }); }
+  if (new URLSearchParams(location.search).get('frames')) { const m = steps[0].keys[0]; for (const f of frames.slice(0, 80)) log(`${Math.round(f.t)} db ${f.db[m].toFixed(1)} nb ${f.db[m - 1].toFixed(1)}/${f.db[m + 1].toFixed(1)} rise ${f.rise[m].toFixed(1)} attack ${f.attack} on ${f.on.includes(m)}`); window.harnessDone = true; throw 'x'; }
+  for (const [k, s] of steps.entries()) for (const m of s.keys) {
+    const fs = frames.filter(f => f.t >= s.t * 1000 && f.t < s.t * 1000 + 300), best = fs.reduce((a, f) => (f.rise[m] > a.rise[m] ? f : a), fs[0]);
+    log(`step ${k} key ${m}: onset ${fs.some(f => f.on.includes(m))} | best rise ${best.rise[m].toFixed(1)} (nb ${best.rise[m - 1].toFixed(1)}/${best.rise[m + 1].toFixed(1)}) db ${best.db[m].toFixed(1)} (nb ${best.db[m - 1].toFixed(1)}/${best.db[m + 1].toFixed(1)}) floor ${best.floor.toFixed(1)} | onsets: ${[...new Set(fs.flatMap(f => f.on))].join(',')} | top db: ${[...best.db.keys()].filter(k => k >= 21 && k <= 108).sort((a, b) => best.db[b] - best.db[a]).slice(0, 4).join(',')}`);
+  }
+  window.harnessDone = true; throw 'why done';
+}
+const only = new URLSearchParams(location.search).get('only');
+for (const [name, steps] of Object.entries(tests)) {
+  if (only && name !== only) continue;
+  const x = await render(steps); const r = judgeRun(x, steps, { trace: !!only });
+  log(`${r.missed.length || r.falseAcc.length ? 'FAIL' : 'ok  '} ${name}: ${steps.length} steps, missed ${JSON.stringify(r.missed)}, false ${JSON.stringify(r.falseAcc)}, latency avg ${r.lat}ms max ${r.maxLat}ms`);
+}
+// wrong notes must NOT be accepted: play a chord that differs by one key from what is expected
+const wrong = [
+  { t: 0.5, keys: [60, 64, 67] }, { t: 1.2, keys: [60, 63, 67], expect: [60, 64, 67], wrong: true },
+  { t: 2.0, keys: [62], expect: [62] }, { t: 2.6, keys: [63], expect: [64], wrong: true },
+  { t: 3.3, keys: [48, 55], expect: [48, 55] }, { t: 4.0, keys: [48], expect: [48, 52], wrong: true },
+  { t: 4.8, keys: [57], expect: [57] }, { t: 5.4, keys: [58], expect: [59], wrong: true }, { t: 6.2, keys: [59], expect: [59] },
+];
+{ const x = await render(wrong); const r = judgeRun(x, wrong); log(`${r.falseAcc.length ? 'FAIL' : 'ok  '} wrong notes rejected: false accepts at ${JSON.stringify(r.falseAcc)}, missed real ${JSON.stringify(r.missed.filter(i => !wrong[i].wrong))}`); }
+// quiet room + loud noise
+{ const s = tests['triads both hands']; const x = await render(s, { noise: 0.02, reverb: 0.5 }); const r = judgeRun(x, s); log(`${r.missed.length ? 'FAIL' : 'ok  '} triads, noisy reverberant room: missed ${JSON.stringify(r.missed)}`); }
+log('done');
+window.harnessDone = true;
+</script>
