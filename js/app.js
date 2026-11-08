@@ -86,7 +86,15 @@ const keyEls = new Map();
 
 function audio() { if (!ctx) { ctx = new (window.AudioContext || window.webkitAudioContext)(); piano = new Piano(ctx); piano.load(); } if (ctx.state === 'suspended') ctx.resume(); return ctx; }
 // play key m for dur seconds, starting `delay` seconds from now
-function sound(m, dur, delay = 0) { audio(); piano.play(m, Math.min(dur, 2), 0.7, ctx.currentTime + delay); appPlayed.set(m, Math.max(appPlayed.get(m) || 0, performance.now() + (delay + Math.min(dur, 2)) * 1000)); }
+function sound(m, dur, delay = 0) {
+  audio(); piano.play(m, Math.min(dur, 2), 0.7, ctx.currentTime + delay);
+  const start = performance.now() + delay * 1000;
+  appPlayed.set(m, Math.max(appPlayed.get(m) || 0, start + Math.min(dur, 2) * 1000));
+  appStarts.push(start); while (appStarts.length > 64) appStarts.shift();
+}
+// when the app's own notes start: a strike heard right then is the speakers, not the player
+const appStarts = [];
+let seenStrikeT = -1e9, userStrikeT = -1e9;
 
 async function openPiece(meta, own) {
   stopDemo(); clearTimeout(autoTimer);
@@ -203,6 +211,7 @@ const loopOn = () => $('#loopBtn').getAttribute('aria-pressed') === 'true';
 const barIndex = (num, last) => { const all = P.measures.map((m, i) => (parseInt(m.n) === num ? i : -1)).filter(i => i >= 0); return all.length ? (last ? all[all.length - 1] : all[0]) : Math.min(P.measures.length - 1, Math.max(0, num - 1)); };
 const loopRange = () => { const a = barIndex(+$('#loopFrom').value, false), b = Math.max(a, barIndex(+$('#loopTo').value, true)); return [a, b]; };
 const targetsOf = s => [...new Set(s.notes.filter(playable).map(n => n.midi))];
+const prevKeys = () => (idx > 0 ? [...new Set(P.steps[idx - 1].notes.map(n => n.midi))] : []); // still sounding: yours and the accompaniment
 
 function setStep(i) {
   clearTimeout(autoTimer); idx = i;
@@ -217,7 +226,7 @@ function setStep(i) {
   }
   const tg = targetsOf(s);
   judge.setTarget(tg, S.octave, performance.now());
-  mic?.detector?.setTargets(tg);
+  mic?.detector?.setTargets(tg, prevKeys());
   if (!tg.length) {
     // only the other hand plays here: go straight to your next note, and let the other hand
     // sound in the background with its own timing (stepping through it looked like skipping)
@@ -245,14 +254,14 @@ let lastMistakeT = -1e9;
 function input(keys, src, fr) {
   if (!P || demoTimer || !P.steps[idx]) return;
   const now = performance.now(), step = idx;
-  const r = judge.feed(keys, now, fr?.db, src === 'mic' ? 110 : 0);
+  const r = judge.feed(keys, now, fr?.db, src === 'mic' ? 110 : 0, src === 'mic' ? userStrikeT : null);
   r.hit.forEach(m => flash(m, 'hit', 250));
   let wrong = r.wrong;
   // through the mic, count a mistake only for a real strike: a fresh attack, nothing expected was hit,
   // the wrong key is the loudest sound, and at most one per attack
   if (src === 'mic') wrong = fr.attack && !r.hit.length && now - lastMistakeT > 350 ? wrong.filter(m => fr.db[m] >= fr.maxDb - 3).slice(0, 1) : [];
   if (wrong.length) { lastMistakeT = now; mistakes += wrong.length; $('#miss').textContent = mistakes; wrong.forEach(m => flash(m, 'bad', 400)); }
-  log({ t: Math.round(now), src, step, want: targetsOf(P.steps[step]), keys, hit: r.hit, wrong, accepted: r.accepted });
+  log({ t: Math.round(now), src, step, want: targetsOf(P.steps[step]), keys, hit: r.hit, wrong, accepted: r.accepted, stale: r.stale });
   if (r.accepted) {
     if (!startedAt) startedAt = performance.now();
     const s = P.steps[idx];
@@ -298,6 +307,10 @@ async function startListening() {
     $('#listen').style.setProperty('--lvl', Math.min(1, r.rms * 12).toFixed(2));
     if (demoTimer) return;
     const now = performance.now();
+    if (r.strikeT !== seenStrikeT) { // a new key strike: yours, unless the app started a note just then
+      seenStrikeT = r.strikeT;
+      if (!appStarts.some(s => r.strikeT >= s - 20 && r.strikeT <= s + 220)) { userStrikeT = r.strikeT; log({ t: Math.round(now), src: 'strike', at: Math.round(r.strikeT) }); }
+    }
     // ignore what the app itself is playing (accompaniment / taps) and its octaves
     const keys = r.onsets.filter(m => ![0, 12, -12, 19, 24].some(d => (appPlayed.get(m - d) || 0) > now - 150));
     if (keys.length) $('#heard').textContent = 'שומע: ' + keys.slice(0, 4).map(m => NAMES[m % 12] + (Math.floor(m / 12) - 1)).join(' ');
@@ -306,7 +319,7 @@ async function startListening() {
   });
   try { await mic.start({ aboveFloorDb: 20 - S.sens / 100 * 12 }); }
   catch { note.textContent = 'אין גישה למיקרופון. אשר גישה בהגדרות הדפדפן ונסה שוב.'; note.hidden = false; mic = null; return; }
-  if (P?.steps[idx]) mic.detector.setTargets(targetsOf(P.steps[idx]));
+  if (P?.steps[idx]) mic.detector.setTargets(targetsOf(P.steps[idx]), prevKeys());
   $('#listen').innerHTML = icon('stop', 'מקשיב…'); $('#listen').classList.add('on'); $('#heard').textContent = 'נגן את הצליל המסומן'; $('#status').hidden = false;
   try { wakeLock = await navigator.wakeLock?.request('screen'); } catch { }
 }

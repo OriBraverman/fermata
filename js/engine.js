@@ -76,7 +76,7 @@ export class Detector {
   // targetRangeDb: an expected key must be within this many dB of the loudest key to count
   constructor(sr, { n = 8192, riseDb = 6, aboveFloorDb = 14, neighbourDb = 1, historyFrames = 4, refractoryMs = 90, attackRatio = 2.2, targetRangeDb = 18, tonalDb = 9 } = {}) {
     Object.assign(this, { sr, n, riseDb, aboveFloorDb, neighbourDb, historyFrames, refractoryMs, attackRatio, targetRangeDb, tonalDb });
-    this.pending = new Set();
+    this.pending = new Set(); this.strikeT = -1e9;
     this.spec = new Spectrum(n); this.sal = new Salience(sr, n);
     this.hist = Array.from({ length: 128 }, () => new Float32Array(historyFrames).fill(-200));
     this.hi = 0; this.last = new Float64Array(128).fill(-1e9); this.db = new Float32Array(128); this.floor = null;
@@ -89,14 +89,23 @@ export class Detector {
   // because they are often already ringing as an overtone of a lower note.
   // For each target, its semitone neighbours are judged only on partials the other targets can't
   // explain (D3+F4 together light up B♭3 as a "missing fundamental"; that must not mask A3).
-  setTargets(midis) {
-    const key = midis.join(','); if (key === this.targetKey) return; this.targetKey = key;
-    this.targets = new Set(midis); this.nbParts = new Map();
+  // `prev`: keys of the step just played. Right after it, a target a fourth/fifth/octave away from them may be
+  // nothing but their overtones (A4's 2nd harmonic is D4's 3rd), so for a moment such a target must also
+  // sound on its own partials — the ones those notes can't produce.
+  setTargets(midis, prev = []) {
+    const key = midis.join(',') + '|' + prev.join(','); if (key === this.targetKey) return; this.targetKey = key;
+    this.targets = new Set(midis); this.nbParts = new Map(); this.ownIdx = new Map(); this.targetsT = null;
     for (const m of this.targets) {
       const others = [...this.targets].filter(o => o !== m);
       this.nbParts.set(m, [m - 1, m + 1].filter(n => n >= LOW && n <= HIGH && !this.targets.has(n)).map(n => this.sal.exclusive(n, others)));
+      const rel = prev.filter(p => RELATED.includes(Math.abs(m - p)) && !this.targets.has(p));
+      if (!rel.length) continue;
+      const mine = this.sal.keys[m - LOW] || [], excl = new Set(this.sal.exclusive(m, rel));
+      const idx = mine.map((p, i) => (excl.has(p) && p.w > 0.05 ? i : -1)).filter(i => i >= 0);
+      if (idx.length) this.ownIdx.set(m, idx); // none left (an octave): the judge's strike check handles it
     }
   }
+  partialsAt(k, idx, mag) { const ps = this.sal.keys[k - LOW]; return ps ? this.sal.sum(idx.filter(i => i < ps.length).map(i => ps[i]), mag) : 0; }
   // How tonal key m sounds: its first partials' peaks against the spectrum just beside them, in dB.
   // A real string gives sharp peaks (15–30 dB); the noise burst of a key strike is flat (a few dB).
   tonality(m, mag) {
@@ -122,6 +131,10 @@ export class Detector {
     const attack = t - (this.attackT ?? -1e9) < 160; // the spectrum lags the attack by a few hops
     this.eHist.push(es); if (this.eHist.length > 4) this.eHist.shift();
     this.attackNow = es > this.attackRatio * prevE + 1e-6;
+    // key strikes: energy jumping against the hop just before (more sensitive than `attack`, so a quick
+    // note over ringing ones still counts). Overtones building up inside the FFT window are not strikes.
+    if (es > 1.6 * (this.eHist[this.eHist.length - 2] ?? es) + 1e-6) this.strikeT = t;
+    if (this.targetsT == null) this.targetsT = t;
     const mag = this.spec.compute(timeData), sal = this.sal.compute(mag), db = this.db;
     for (let m = LOW; m <= HIGH; m++) db[m] = 20 * Math.log10(sal[m] + 1e-9);
     // noise floor: 30th percentile of key saliences, tracked slowly
@@ -134,7 +147,12 @@ export class Detector {
       const tgt = this.targets.has(m);
       const nb = tgt ? Math.max(-200, ...this.nbParts.get(m).map(ps => 20 * Math.log10(this.sal.sum(ps, mag) + 1e-9)))
         : Math.max(m > LOW ? db[m - 1] : -200, m < HIGH ? db[m + 1] : -200);
-      const peak = db[m] > nb + this.neighbourDb && db[m] > this.floor + this.aboveFloorDb + (m < 40 ? 4 : 0) && db[m] > maxDb - (tgt ? this.targetRangeDb : 22);
+      let ownOk = true;
+      if (tgt && this.ownIdx.has(m) && t - this.targetsT < 450) {
+        const idx = this.ownIdx.get(m);
+        ownOk = this.partialsAt(m, idx, mag) > 1.2 * Math.max(this.partialsAt(m - 1, idx, mag), this.partialsAt(m + 1, idx, mag));
+      }
+      const peak = ownOk && db[m] > nb + this.neighbourDb && db[m] > this.floor + this.aboveFloorDb + (m < 40 ? 4 : 0) && db[m] > maxDb - (tgt ? this.targetRangeDb : 22);
       const newPeak = peak && t - this.peakT[m] > 250 && rise[m] > 3;
       if (peak) this.peakT[m] = t;
       // confirm last frame's candidate: it must still be a tonal peak (a strike's noise burst is gone by then)
@@ -150,7 +168,7 @@ export class Detector {
     }
     for (let m = LOW; m <= HIGH; m++) this.hist[m][this.hi] = db[m];
     this.hi = (this.hi + 1) % this.historyFrames;
-    return { onsets, db, floor: this.floor, rms, attack, maxDb, checked };
+    return { onsets, db, floor: this.floor, rms, attack, maxDb, checked, strikeT: this.strikeT };
   }
 }
 
@@ -161,11 +179,14 @@ export function explainedBy(m, sources, db) {
   return sources.some(s => OVERTONE.includes(m - s) && db[s] > db[m] - 9);
 }
 
+const RELATED = [5, 7, 12, 17, 19, 24, 28, 31]; // fourth, fifth, octave and their compounds: shared overtones
+const OCTAVES = [12, 24, 36]; // an octave shares *all* its partials: only a fresh strike can tell
+
 // Wait mode: accepts the step once every expected key had an onset within `windowMs`.
 // Keys struck a little ahead (while the previous step was still being recognised) are kept and
 // count for the next step, so fast passages don't get stuck.
 export class WaitJudge {
-  constructor({ windowMs = 400 } = {}) { this.windowMs = windowMs; this.target = []; this.hits = new Map(); this.octave = false; this.recent = []; this.lastUsed = -1e9; this.blockUntil = -1e9; }
+  constructor({ windowMs = 400 } = {}) { this.windowMs = windowMs; this.target = []; this.hits = new Map(); this.octave = false; this.recent = []; this.lastUsed = -1e9; this.blockUntil = -1e9; this.acceptT = -1e9; this.lastNotes = []; }
   setTarget(midis, octaveOk = false, t = null) {
     this.target = [...midis]; this.hits.clear(); this.octave = octaveOk;
     if (t != null) for (const r of this.recent) {
@@ -174,11 +195,16 @@ export class WaitJudge {
   }
   matches(played, want) { return played === want || (this.octave && (played - want) % 12 === 0); }
   // onsets: keys struck now (from mic Detector or MIDI). Returns { accepted, wrong:[midi], hit:[midi] }.
-  // blockMs: after accepting a step, ignore keys for this long, so one strike can't also complete the next step
-  feed(onsets, t, db = null, blockMs = 0) {
+  // blockMs: after accepting a step, ignore keys for this long, so one strike can't also complete the next step.
+  // strikeT (mic only): time of the latest key strike heard. Shortly after a step, with no new strike since,
+  // a key a fourth/fifth/octave away from the notes just played is their overtone building up
+  // (A4's 2nd harmonic is D4's 3rd), not a new note — it doesn't count.
+  feed(onsets, t, db = null, blockMs = 0, strikeT = null) {
     const hit = [], wrong = [];
     if (t < this.blockUntil) return { accepted: false, wrong, hit };
+    const echo = m => strikeT != null && t - this.acceptT < 350 && strikeT <= this.acceptT + 15 && this.lastNotes.some(p => OCTAVES.includes(Math.abs(m - p)));
     for (const m of onsets) {
+      if (echo(m)) continue;
       this.recent.push({ m, t });
       const tgt = this.target.find(w => this.matches(m, w));
       if (tgt !== undefined) { this.hits.set(tgt, t); hit.push(tgt); }
@@ -187,7 +213,7 @@ export class WaitJudge {
     this.recent = this.recent.filter(r => t - r.t <= this.windowMs * 1.5);
     for (const [k, v] of this.hits) if (t - v > this.windowMs) this.hits.delete(k);
     const accepted = this.target.length > 0 && this.target.every(w => this.hits.has(w));
-    if (accepted) { this.lastUsed = Math.max(...this.hits.values()); this.hits.clear(); this.blockUntil = t + blockMs; }
+    if (accepted) { this.lastUsed = Math.max(...this.hits.values()); this.hits.clear(); this.blockUntil = t + blockMs; this.acceptT = t; this.lastNotes = [...this.target]; }
     return { accepted, wrong, hit };
   }
 }

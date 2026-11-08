@@ -29,11 +29,11 @@ function judgeRun(x, steps, { octave = false, detOpts, trace = false } = {}) {
   j.setTarget(want(steps[0]), octave);
   const accT = [];
   for (let i = 8192; i < x.length; i += SR * HOP / 1000) {
-    det.setTargets(k < steps.length ? want(steps[k]) : []);
+    det.setTargets(k < steps.length ? want(steps[k]) : [], k > 0 ? steps[k - 1].keys : []);
     const t = i / SR * 1000, r = det.process(x.subarray(i - 8192, i), t);
     // not recognised within 700 ms of being played: missed
     while (k < steps.length && t > steps[k].t * 1000 + 700) { if (!steps[k].wrong) missed.push(k); k++; if (k < steps.length) j.setTarget(want(steps[k]), octave, t); }
-    const res = j.feed(r.onsets, t, r.db);
+    const res = j.feed(r.onsets, t, r.db, 0, r.strikeT);
     if (trace && (res.hit.length || res.accepted)) log(`  t=${Math.round(t)} step ${k} (${want(steps[k] || {}).join('+')} @${steps[k] && Math.round(steps[k].t * 1000)}) hit ${res.hit} ${res.accepted ? 'ACCEPT' : ''}`);
     if (res.accepted && k < steps.length) {
       const d = t - steps[k].t * 1000;
@@ -63,6 +63,8 @@ const tests = {
   'repeated note x6': seqSteps([64, 64, 64, 64, 64, 64], 0.3),
   'repeated chord x4': seqSteps([[60, 64, 67], [60, 64, 67], [60, 64, 67], [60, 64, 67]], 0.45),
   'melody over held bass': [{ t: 0.5, keys: [36, 43], dur: 4, vel: 0.8 }, ...seqSteps([72, 74, 76, 77, 79, 77, 76, 74, 72], 0.35).map(s => ({ ...s, t: s.t + 0.3, vel: 0.4 }))].map((s, i) => i === 0 ? s : s),
+  'Musette, practice pace': seqSteps([[81, 38], 50, [79, 38], 78, [76, 50], 74, [81, 38], 50, [79, 38], 78, [76, 50], 74, [69, 45], [62, 50], [61, 49], [62, 50], [64, 52], [69, 45], [62, 50]], 0.6),
+  'Für Elise, practice pace': seqSteps([76, 75, 76, 75, 76, 71, 74, 72, [69, 45], 52, 57, 60, 64, 69, [71, 40], 52, 56, 64, 68, 71, [72, 45], 52, 57], 0.5),
   'Für Elise opening': seqSteps([76, 75, 76, 75, 76, 71, 74, 72, [69, 45], 52, 57, 60, 64, 69, [71, 40], 52, 56, 64, 68, 71, [72, 45], 52, 57], 0.2),
 };
 const why = new URLSearchParams(location.search).get('why');
@@ -88,6 +90,9 @@ const wrong = [
   { t: 2.0, keys: [62], expect: [62] }, { t: 2.6, keys: [63], expect: [64], wrong: true },
   { t: 3.3, keys: [48, 55], expect: [48, 55] }, { t: 4.0, keys: [48], expect: [48, 52], wrong: true },
   { t: 4.8, keys: [57], expect: [57] }, { t: 5.4, keys: [58], expect: [59], wrong: true }, { t: 6.2, keys: [59], expect: [59] },
+  // live bug: after A4, D4 (whose 3rd harmonic is A4's 2nd) was accepted without being played
+  { t: 7.0, keys: [69], expect: [69] }, { t: 7.5, keys: [], expect: [62], wrong: true },
+  { t: 8.6, keys: [74], expect: [74] }, { t: 9.1, keys: [], expect: [67], wrong: true },
 ];
 { const x = await render(wrong); const r = judgeRun(x, wrong); log(`${r.falseAcc.length ? 'FAIL' : 'ok  '} wrong notes rejected: false accepts at ${JSON.stringify(r.falseAcc)}, missed real ${JSON.stringify(r.missed.filter(i => !wrong[i].wrong))}`); }
 // quiet room + loud noise
