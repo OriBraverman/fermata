@@ -7,10 +7,12 @@ const $ = s => document.querySelector(s);
 const NAMES = ['דו', 'דו#', 'רה', 'רה#', 'מי', 'פה', 'פה#', 'סול', 'סול#', 'לה', 'לה#', 'סי'];
 const LEVELS = ['', 'קל', 'בינוני-קל', 'בינוני', 'מתקדם', 'וירטואוזי'];
 const black = m => [1, 3, 6, 8, 10].includes(m % 12);
-const store = { get(k, d) { try { const v = localStorage.getItem('psn:' + k); return v == null ? d : JSON.parse(v); } catch { return d; } }, set(k, v) { try { localStorage.setItem('psn:' + k, JSON.stringify(v)); } catch { } } };
+const store = { get(k, d) { try { const v = localStorage.getItem('fermata:' + k); return v == null ? d : JSON.parse(v); } catch { return d; } }, set(k, v) { try { localStorage.setItem('fermata:' + k, JSON.stringify(v)); } catch { } } };
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const icon = (name, label) => `<svg class="i"><use href="#i-${name}"/></svg>${label ? `<span>${label}</span>` : ''}`;
 
 // ---------- settings ----------
-const S = Object.assign({ hands: 'both', speed: 80, accomp: true, octave: false, fingers: true, sens: 50, zoom: 42, layout: 'page' }, store.get('settings', {}));
+const S = Object.assign({ hands: 'both', speed: 80, accomp: true, octave: false, fingers: true, sens: 50, zoom: 46, layout: 'page' }, store.get('settings', {}));
 const saveS = () => store.set('settings', S);
 
 // ---------- Verovio (Humdrum build only when a .krn file needs it) ----------
@@ -22,7 +24,7 @@ function toolkit(hum) {
 }
 
 // ---------- imported files (IndexedDB) ----------
-const idb = () => new Promise((res, rej) => { const r = indexedDB.open('pesantaron', 1); r.onupgradeneeded = () => r.result.createObjectStore('files', { keyPath: 'id' }); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+const idb = () => new Promise((res, rej) => { const r = indexedDB.open('fermata', 1); r.onupgradeneeded = () => r.result.createObjectStore('files', { keyPath: 'id' }); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
 async function dbAll() { try { const d = await idb(); return await new Promise(r => { const q = d.transaction('files').objectStore('files').getAll(); q.onsuccess = () => r(q.result); q.onerror = () => r([]); }); } catch { return []; } }
 async function dbPut(v) { const d = await idb(); return new Promise(r => { const t = d.transaction('files', 'readwrite'); t.objectStore('files').put(v); t.oncomplete = r; }); }
 async function dbDel(id) { const d = await idb(); return new Promise(r => { const t = d.transaction('files', 'readwrite'); t.objectStore('files').delete(id); t.oncomplete = r; }); }
@@ -31,17 +33,31 @@ async function dbDel(id) { const d = await idb(); return new Promise(r => { cons
 let catalog = [], mine = [], level = 0;
 async function loadLibrary() {
   try { catalog = await (await fetch('library/catalog.json')).json(); } catch { catalog = []; }
-  mine = await dbAll(); renderLibrary();
+  $('#countChip').textContent = `${catalog.length} יצירות קלאסיות`;
+  mine = await dbAll(); renderLibrary(); fromHash();
 }
+const levelBars = l => `<span class="lv" title="${LEVELS[l] || ''}" aria-label="רמה: ${LEVELS[l] || ''}">${[1, 2, 3, 4, 5].map(i => `<i class="${i <= l ? 'on' : ''}"></i>`).join('')}</span>`;
 function card(p, own) {
-  return `<button class="card" data-id="${p.id}" data-own="${own ? 1 : ''}"><b>${p.titleHe || p.title}</b><small>${p.composerHe || p.composer || ''}${p.titleHe && p.title ? ' · ' + p.title : ''}</small>
-    <span class="meta">${p.level ? `<span class="lvl" title="${LEVELS[p.level]}">${'●'.repeat(p.level)}${'○'.repeat(5 - p.level)}</span>` : ''}${p.hasFingering ? '<span>אצבוע מהעורך</span>' : ''}${own ? '<span data-del="1" role="button" aria-label="מחק">🗑</span>' : ''}</span></button>`;
+  return `<button class="card" data-id="${esc(p.id)}" data-own="${own ? 1 : ''}">
+    <span class="who">${esc(p.composerHe || p.composer || 'קובץ מיובא')}</span>
+    <span class="ttl">${esc(p.titleHe || p.title)}</span>${p.titleHe && p.title ? `<span class="en">${esc(p.title)}</span>` : ''}
+    <span class="ft">${p.level ? levelBars(p.level) + `<span>${LEVELS[p.level]}</span>` : ''}${p.hasFingering ? '<span class="tag">אצבוע מהעורך</span>' : ''}</span>
+    ${own ? `<span class="del" data-del="1" role="button" aria-label="מחק">${icon('trash')}</span>` : ''}</button>`;
 }
 function renderLibrary() {
   const q = $('#q').value.trim().toLowerCase();
   const ok = p => (!level || p.level === level) && (!q || [p.title, p.titleHe, p.composer, p.composerHe].some(s => s && s.toLowerCase().includes(q)));
-  $('#grid').innerHTML = catalog.filter(ok).map(p => card(p)).join('') || '<p class="foot">לא נמצאו יצירות.</p>';
+  const list = catalog.filter(ok);
+  // grouped by level; one flat grid while searching or filtering
+  const groups = q || level ? [[0, list]] : [1, 2, 3, 4, 5].map(l => [l, list.filter(p => p.level === l)]).filter(g => g[1].length);
+  $('#lib').innerHTML = list.length ? groups.map(([l, ps]) => `<section>${l ? `<div class="sect"><h2>${LEVELS[l]}</h2><span>${ps.length} יצירות</span></div>` : ''}<div class="grid">${ps.map(p => card(p)).join('')}</div></section>`).join('<div style="height:18px"></div>')
+    : '<p class="foot">לא נמצאו יצירות. נסה מילה אחרת, או ייבא קובץ משלך.</p>';
   $('#mine').hidden = !mine.length; $('#mineGrid').innerHTML = mine.filter(p => !q || p.title.toLowerCase().includes(q)).map(p => card(p, true)).join('');
+  // pieces practised recently, with how far you got
+  const recent = store.get('recent', []).map(r => ({ r, p: catalog.find(c => c.id === r.id) || mine.find(c => c.id === r.id) })).filter(x => x.p).slice(0, 4);
+  $('#recentWrap').hidden = !recent.length || !!q || !!level;
+  $('#recent').innerHTML = recent.map(({ r, p }) => `<button class="card" data-id="${esc(p.id)}" data-own="${p.data ? 1 : ''}"><span class="play">${icon('play')}</span>
+    <span class="grow"><span class="who">${esc(p.composerHe || p.composer || '')}</span><span class="ttl">${esc(p.titleHe || p.title)}</span><span class="bar"><i style="width:${Math.round(r.pct * 100)}%"></i></span></span></button>`).join('');
 }
 $('#q').oninput = renderLibrary;
 $('#levels').onclick = e => { const b = e.target.closest('button'); if (!b) return; level = +b.dataset.l; $('#levels').querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b)); renderLibrary(); };
@@ -74,8 +90,10 @@ function sound(m, dur) { audio(); piano.play(m, Math.min(dur, 2)); appPlayed.set
 async function openPiece(meta, own) {
   stopDemo(); clearTimeout(autoTimer);
   $('#library').hidden = true; $('#practice').hidden = false; $('#done').hidden = true;
-  $('#title').textContent = meta.titleHe || meta.title; $('#loading').hidden = false; $('#loading').textContent = 'טוען תווים…'; $('#score').innerHTML = '';
-  $('#credit').innerHTML = meta.source ? `מקור: <a href="${meta.source}" target="_blank" rel="noopener">${new URL(meta.source).hostname}</a> · ${meta.license || ''}` : '';
+  $('#title').textContent = meta.titleHe || meta.title; $('#composer').textContent = [meta.composerHe || meta.composer, meta.titleHe && meta.title].filter(Boolean).join(' · ');
+  $('#loading').hidden = false; $('#loading .spin').hidden = false; $('#loadingText').textContent = 'טוען תווים…'; $('#score').innerHTML = '';
+  $('#credit').innerHTML = meta.source ? `<a href="${esc(meta.source)}" target="_blank" rel="noopener">${esc(new URL(meta.source).hostname)}</a> · ${esc(meta.license || '')}` : 'קובץ שייבאת';
+  if (!own) history.replaceState(null, '', '#' + meta.id); // a link straight to this piece
   try {
     const fmt = meta.format || meta.file.split('.').pop();
     const tk = await toolkit(fmt === 'krn');
@@ -88,26 +106,37 @@ async function openPiece(meta, own) {
     if (!steps.length) throw new Error('empty');
     P = { meta, tk, steps, measures, own, hasFingering };
   } catch (err) {
-    $('#loading').textContent = 'לא הצלחתי לפתוח את הקובץ. בדוק שהוא MusicXML, ‏MXL, ‏Humdrum, ‏MEI או ABC.'; console.error(err); return;
+    $('#loadingText').textContent = 'לא הצלחתי לפתוח את הקובץ. בדוק שהוא MusicXML, ‏MXL, ‏Humdrum, ‏MEI או ABC.'; $('#loading .spin').hidden = true; console.error(err); return;
   }
   $('#loopFrom').value = 1; $('#loopTo').value = 4;
   buildKeyboard(); renderScore();
   const saved = store.get('pos:' + meta.id, 0);
-  idx = 0; mistakes = 0; startedAt = 0; loops = 0;
+  idx = 0; mistakes = 0; startedAt = 0; loops = 0; $('#miss').textContent = 0;
   setStep(saved < P.steps.length ? saved : 0);
 }
-$('#back').onclick = () => { stopDemo(); clearTimeout(autoTimer); stopListening(); $('#practice').hidden = true; $('#library').hidden = false; };
+$('#back').onclick = () => {
+  stopDemo(); clearTimeout(autoTimer); stopListening(); $('#practice').hidden = true; $('#library').hidden = false;
+  history.replaceState(null, '', location.pathname); renderLibrary();
+};
+function fromHash() { const id = decodeURIComponent(location.hash.slice(1)), p = id && catalog.find(c => c.id === id); if (p && P?.meta.id !== id) openPiece(p, false); }
+addEventListener('hashchange', fromHash);
 
 // ---------- score rendering ----------
 function renderScore() {
   const tk = P.tk, w = $('#scorewrap').clientWidth - 8;
   tk.setOptions({ scale: S.zoom, pageWidth: Math.max(600, Math.round(w * 100 / S.zoom)), pageHeight: 60000, adjustPageHeight: true, adjustPageWidth: S.layout === 'line',
     breaks: S.layout === 'line' ? 'none' : 'auto', header: 'none', footer: 'none', pageMarginLeft: 40, pageMarginRight: 40, pageMarginTop: 40, pageMarginBottom: 40, svgAdditionalAttribute: [] });
-  tk.redoLayout();
+  tk.setOptions({ spacingLinear: 0.25 }); tk.redoLayout();
   let html = ''; for (let p = 1; p <= tk.getPageCount(); p++) html += tk.renderToSVG(p);
+  // some exported files lay out far too tightly (notes on top of each other): widen the spacing
+  if (S.layout === 'page' && P.measures.length / Math.max(1, (html.match(/class="system"/g) || []).length) > 6) {
+    tk.setOptions({ spacingLinear: 0.5 }); tk.redoLayout(); html = ''; for (let p = 1; p <= tk.getPageCount(); p++) html += tk.renderToSVG(p);
+  }
   $('#score').innerHTML = html; $('#loading').hidden = true;
   if (S.fingers) addFingerLabels();
   $('#score').querySelectorAll('g.fing').forEach(g => (g.style.display = S.fingers ? '' : 'none'));
+  // editors often hide dozens of bare metronome marks to shape rubato; show only the first one
+  [...$('#score').querySelectorAll('g.tempo')].filter(g => !/[A-Za-z֐-׿]{2}/.test(g.textContent)).slice(1).forEach(g => (g.style.display = 'none'));
   highlight(true);
 }
 // draw computed fingers for notes the score gives none
@@ -177,10 +206,14 @@ const targetsOf = s => [...new Set(s.notes.filter(playable).map(n => n.midi))];
 function setStep(i) {
   clearTimeout(autoTimer); idx = i;
   const s = P.steps[idx];
-  $('#pos').textContent = s ? `תיבה ${P.measures[s.measure]?.n || s.measure + 1} / ${P.measures.length}` : '';
+  $('#pos').innerHTML = s ? `תיבה <b>${esc(P.measures[s.measure]?.n ?? s.measure + 1)}</b> / ${P.measures.length}` : '';
+  $('#progBar').style.width = (idx / P.steps.length * 100) + '%';
   showTargets(); highlight(true);
   if (!s) return;
-  if (idx % 8 === 0) store.set('pos:' + P.meta.id, idx);
+  if (idx % 8 === 0) {
+    store.set('pos:' + P.meta.id, idx);
+    store.set('recent', [{ id: P.meta.id, pct: idx / P.steps.length }, ...store.get('recent', []).filter(r => r.id !== P.meta.id)].slice(0, 8));
+  }
   const tg = targetsOf(s);
   judge.setTarget(tg, S.octave, performance.now());
   mic?.detector?.setTargets(tg);
@@ -200,7 +233,7 @@ function input(keys, src, db) {
   if (!P || demoTimer || !P.steps[idx]) return;
   const r = judge.feed(keys, performance.now(), db);
   r.hit.forEach(m => flash(m, 'hit', 250));
-  if (r.wrong.length && src !== 'mic-quiet') { mistakes += r.wrong.length; r.wrong.forEach(m => flash(m, 'bad', 400)); }
+  if (r.wrong.length) { mistakes += r.wrong.length; $('#miss').textContent = mistakes; r.wrong.forEach(m => flash(m, 'bad', 400)); }
   if (r.accepted) {
     if (!startedAt) startedAt = performance.now();
     const s = P.steps[idx];
@@ -209,20 +242,21 @@ function input(keys, src, db) {
   }
 }
 function finish() {
-  store.set('pos:' + P.meta.id, 0);
+  store.set('pos:' + P.meta.id, 0); $('#progBar').style.width = '100%';
+  store.set('recent', store.get('recent', []).filter(r => r.id !== P.meta.id));
   const secs = startedAt ? Math.round((performance.now() - startedAt) / 1000) : 0;
-  $('#doneStats').textContent = `${P.steps.length} צעדים${secs ? ` ב-${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')} דקות` : ''} · ${mistakes ? `${mistakes} תווים שגויים` : 'בלי טעויות'}`;
+  $('#dSteps').textContent = P.steps.length; $('#dTime').textContent = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`; $('#dMiss').textContent = mistakes;
   $('#done').hidden = false;
 }
-$('#again').onclick = () => { $('#done').hidden = true; mistakes = 0; startedAt = 0; setStep(0); };
+$('#again').onclick = () => { $('#done').hidden = true; mistakes = 0; startedAt = 0; $('#miss').textContent = 0; setStep(0); };
 $('#toLib').onclick = () => { $('#done').hidden = true; $('#back').click(); };
-$('#restart').onclick = () => { stopDemo(); mistakes = 0; startedAt = 0; setStep(loopOn() ? Math.max(0, P.steps.findIndex(s => s.measure >= loopRange()[0])) : 0); };
+$('#restart').onclick = () => { stopDemo(); mistakes = 0; startedAt = 0; $('#miss').textContent = 0; setStep(loopOn() ? Math.max(0, P.steps.findIndex(s => s.measure >= loopRange()[0])) : 0); };
 
 // ---------- demo playback ----------
 $('#demo').onclick = () => {
   if (demoTimer) { stopDemo(); return setStep(idx); } // keep practising from where playback stopped
   audio(); const from = idx; let i = idx; const [a, b] = loopRange();
-  $('#demo').textContent = '■ עצור';
+  $('#demo').innerHTML = icon('stop', 'עצור');
   const step = () => {
     const s = P.steps[i];
     if (!s || (loopOn() && s.measure > b)) { stopDemo(); setStep(from); return; }
@@ -233,7 +267,7 @@ $('#demo').onclick = () => {
   };
   clearTimeout(autoTimer); demoTimer = -1; step();
 };
-function stopDemo() { if (demoTimer) { clearTimeout(demoTimer); demoTimer = null; $('#demo').textContent = '▶ השמע'; } }
+function stopDemo() { if (demoTimer) { clearTimeout(demoTimer); demoTimer = null; $('#demo').innerHTML = icon('play', 'השמע'); } }
 
 // ---------- microphone ----------
 $('#listen').onclick = () => (mic?.on ? stopListening() : startListening());
@@ -242,23 +276,23 @@ async function startListening() {
   if (!navigator.mediaDevices?.getUserMedia) { note.textContent = 'המיקרופון זמין רק כשהדף נפתח בכתובת https.'; note.hidden = false; return; }
   audio();
   mic = new Mic(ctx, r => {
-    $('#meter i').style.width = Math.min(100, r.rms * 900) + '%';
+    $('#listen').style.setProperty('--lvl', Math.min(1, r.rms * 12).toFixed(2));
     if (demoTimer) return;
     const now = performance.now();
     // ignore what the app itself is playing (accompaniment / taps) and its octaves
     const keys = r.onsets.filter(m => ![0, 12, -12, 19, 24].some(d => (appPlayed.get(m - d) || 0) > now - 150));
-    if (keys.length) $('#heard').textContent = keys.slice(0, 4).map(m => NAMES[m % 12] + (Math.floor(m / 12) - 1)).join(' ');
+    if (keys.length) $('#heard').textContent = 'שומע: ' + keys.slice(0, 4).map(m => NAMES[m % 12] + (Math.floor(m / 12) - 1)).join(' ');
     if (keys.length) input(keys, 'mic', r.db);
   });
   try { await mic.start({ aboveFloorDb: 20 - S.sens / 100 * 12 }); }
   catch { note.textContent = 'אין גישה למיקרופון. אשר גישה בהגדרות הדפדפן ונסה שוב.'; note.hidden = false; mic = null; return; }
   if (P?.steps[idx]) mic.detector.setTargets(targetsOf(P.steps[idx]));
-  $('#listen').textContent = '⏹ הפסק'; $('#listen').classList.add('on');
+  $('#listen').innerHTML = icon('stop', 'מקשיב…'); $('#listen').classList.add('on'); $('#heard').textContent = 'נגן את הצליל המסומן'; $('#status').hidden = false;
   try { wakeLock = await navigator.wakeLock?.request('screen'); } catch { }
 }
 function stopListening() {
   mic?.stop(); mic = null; try { wakeLock?.release(); } catch { } wakeLock = null;
-  $('#listen').textContent = '🎤 האזנה'; $('#listen').classList.remove('on'); $('#heard').textContent = '—'; $('#meter i').style.width = '0';
+  $('#listen').innerHTML = icon('mic', 'האזנה'); $('#listen').classList.remove('on'); $('#listen').style.removeProperty('--lvl'); $('#status').hidden = true;
 }
 listenMidi((m) => { if (!P || $('#practice').hidden) return; flash(m, 'down', 150); input([m], 'midi'); }, names => { $('#midiState').textContent = names.length ? 'MIDI: ' + names.join(', ') : ''; });
 
@@ -271,8 +305,13 @@ document.querySelectorAll('[data-layout]').forEach(b => {
   b.setAttribute('aria-pressed', b.dataset.layout === S.layout);
   b.onclick = () => { S.layout = b.dataset.layout; saveS(); document.querySelectorAll('[data-layout]').forEach(x => x.setAttribute('aria-pressed', x === b)); if (P) renderScore(); };
 });
-$('#setBtn').onclick = () => { const p = $('#panel'); p.hidden = !p.hidden; $('#setBtn').setAttribute('aria-expanded', !p.hidden); };
-$('#loopBtn').onclick = () => { const on = !loopOn(); $('#loopBtn').setAttribute('aria-pressed', on); if (on) { $('#panel').hidden = false; const [a] = loopRange(); setStep(Math.max(0, P.steps.findIndex(s => s.measure >= a))); } };
+function togglePanel(open) {
+  const p = $('#panel'); open ??= p.hidden; p.hidden = !open; $('#setBtn').setAttribute('aria-expanded', open);
+  if (open) p.style.setProperty('--panel-top', ($('.controls').getBoundingClientRect().bottom - $('#practice').getBoundingClientRect().top + 6) + 'px');
+}
+$('#setBtn').onclick = () => togglePanel();
+$('#scorewrap').addEventListener('pointerdown', () => togglePanel(false));
+$('#loopBtn').onclick = () => { const on = !loopOn(); $('#loopBtn').setAttribute('aria-pressed', on); if (on) { togglePanel(true); const [a] = loopRange(); setStep(Math.max(0, P.steps.findIndex(s => s.measure >= a))); } };
 $('#loopFrom').onchange = $('#loopTo').onchange = () => { if (loopOn()) { const [a] = loopRange(); setStep(Math.max(0, P.steps.findIndex(s => s.measure >= a))); } };
 const bindRange = (id, key, fmt) => { const el = $('#' + id); el.value = S[key]; if (fmt) fmt(); el.oninput = () => { S[key] = +el.value; saveS(); fmt?.(); }; };
 bindRange('speed', 'speed', () => ($('#speedV').textContent = S.speed + '%'));
