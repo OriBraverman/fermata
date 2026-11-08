@@ -16,7 +16,7 @@ Real sheet music, both hands, chords. Runs in the browser on a tablet, phone or 
 
 ### בעברית
 
-פרמטה היא אפליקציית תרגול פסנתר חינמית שעובדת בדפדפן, גם בטאבלט. היא מציגה תווים אמיתיים לשתי הידיים, מקשיבה לפסנתר שלך דרך המיקרופון או כבל MIDI, ומחכה עד שתנגן את הצליל או האקורד הנכון. על המקלדת שבמסך מסומנים הקלידים הבאים, כל אחד עם מספר האצבע המומלצת. בספרייה 78 יצירות קלאסיות, מסונטינות ועד שופן וליסט, ואפשר גם לייבא קבצים משלך.
+פרמטה היא אפליקציית תרגול פסנתר חינמית שעובדת בדפדפן, גם בטאבלט. היא מציגה תווים אמיתיים לשתי הידיים, מקשיבה לפסנתר שלך דרך המיקרופון או כבל MIDI, ומחכה עד שתנגן את הצליל או האקורד הנכון. על המקלדת שבמסך מסומנים הקלידים הבאים, כל אחד עם מספר האצבע המומלצת. בספרייה 78 יצירות קלאסיות, מסונטינות ועד שופן וליסט, ואפשר גם לייבא קבצים משלך. יש בה גם תרגול סולמות בכל הסולמות עם האצבוע הסטנדרטי, אימון קריאת תווים במפתח פה ובמפתח סול, ושיעורי תאוריה של המוזיקה בעברית.
 
 </div>
 
@@ -27,6 +27,9 @@ Real sheet music, both hands, chords. Runs in the browser on a tablet, phone or 
 - **Real notation** for both staves (rendered with [Verovio](https://www.verovio.org)). The current notes are highlighted, and the page turns by itself.
 - **Fingering everywhere.** It shows the editor's fingering when the score has it, and works out a fingering when it doesn't.
 - **Practice tools:** hands separately (the other hand plays along), loop any range of bars, listen to a passage at any speed on a sampled concert grand, and tap any note in the score to start there.
+- **Scales:** major, natural, harmonic and melodic minor, and chromatic, in every key on the circle of fifths. Practise one hand or both, over one or two octaves, with the standard fingering for each key, in the same wait mode as the pieces.
+- **Note-reading drill:** a note appears on the staff (bass, treble or both) and you play it. There are no hints on the keyboard, and the right key lights up only after two wrong tries. It tracks your average time per note, and it's the fastest way to get fluent in the bass clef.
+- **Music theory lessons** in Hebrew, from the bass clef to chords and sight-reading habits. Each comes with notation examples you can listen to and a short self-check.
 - **78 pieces built in**, from easy to virtuoso: Bach, Mozart, Beethoven, Schubert, Chopin, Schumann, Liszt, Grieg, Debussy, Satie, Joplin and more.
 - **Bring your own scores:** MusicXML (`.musicxml`, `.mxl`, e.g. exported from MuseScore), Humdrum (`.krn`), MEI or ABC. Imported files stay in your browser.
 - Remembers where you stopped in each piece. Each piece has its own link, e.g. [`#chopin-prelude-4`](https://oribraverman.github.io/fermata/#chopin-prelude-4).
@@ -72,6 +75,8 @@ Plain HTML/JS modules with no build step. Verovio and the piano samples load fro
 | `js/score.js` | score → practice steps via Verovio's timemap and MEI (pitches, ties, grace notes, 8va lines, fingering, bars) |
 | `js/fingering.js` | automatic fingering: dynamic programming over a Parncutt-style hand-span cost model |
 | `js/audio.js` | sampled grand piano, microphone capture, Web MIDI |
+| `js/scales.js` | scales (spelling, key signatures, standard fingerings) and reading drills, generated as MusicXML |
+| `js/lessons.js` | the theory lessons: Hebrew text, ABC notation examples, self-check questions |
 | `library/` | the 78 pieces plus `catalog.json` (titles in Hebrew and English, level, source, licence) |
 
 ### Run locally
@@ -92,7 +97,10 @@ node test/fingering.test.mjs
 npm i --prefix /tmp/vrv verovio@6.3.0
 VEROVIO_DIR=/tmp/vrv node test/score.test.mjs
 VEROVIO_DIR=/tmp/vrv node test/library.test.mjs
+VEROVIO_DIR=/tmp/vrv node test/scales.test.mjs
 ```
+
+`scales.test.mjs` checks spelling (E♯ in F♯ major, B♯ in C♯ minor), the sounding pitches through Verovio, and the standard fingerings, and loads all 120 scale exercises plus the reading drills.
 
 `library.test.mjs` loads every piece and checks the fast pitch extraction against Verovio's own MIDI output (18,000+ notes, 0 mismatches). The automatic fingering is checked against standard fingerings for scales, five-finger positions, triads and octaves. Open `test/harness.html` through a local server to run the microphone detector on rendered piano audio.
 

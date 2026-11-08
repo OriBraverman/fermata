@@ -159,7 +159,49 @@ input[type=range]{accent-color:var(--rh)}
 .stats b{display:block;font-size:1.5rem;font-variant-numeric:tabular-nums}
 .stats span{color:var(--muted);font-size:.82rem}
 
-@media (max-width:820px){ .hero{grid-template-columns:1fr} .hero .art{display:none} .hide-sm{display:none!important} }
+/* ---------- sections: tabs, scales, drill, theory ---------- */
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);overflow-x:auto;overflow-y:hidden;margin-top:-8px;scrollbar-width:none}
+.tabs button{all:unset;cursor:pointer;padding:10px 14px;font-weight:500;color:var(--muted);border-bottom:3px solid transparent;margin-bottom:-1px;white-space:nowrap}
+.tabs button[aria-current="page"]{color:var(--ink);border-bottom-color:var(--ink)}
+.tabs button:focus-visible{outline:3px solid var(--rh);outline-offset:-3px}
+.pane{display:flex;flex-direction:column;gap:22px}
+.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);gap:16px;align-items:start}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:18px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:10px;min-width:0}
+.opts .lbl{font-size:.78rem;letter-spacing:.06em;color:var(--muted);font-weight:600;margin-top:6px}
+.muted{color:var(--muted);font-weight:400;letter-spacing:0}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chips button{cursor:pointer;border:1px solid var(--line);background:var(--surface);border-radius:99px;padding:6px 13px;min-height:38px;font-weight:500}
+.chips button[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.chips.keys button{min-width:62px}
+.row2{display:flex;gap:18px;flex-wrap:wrap}
+.btn.big{min-height:52px;font-size:1.05rem;margin-top:8px}
+.check{display:flex;gap:8px;align-items:center;margin-top:6px}
+.pv-title{font-family:var(--display);font-size:1.5rem;margin:0}
+.pv-info{color:var(--muted);line-height:1.7}
+.pv-info b{color:var(--ink)}
+.paper{background:var(--paper);border-radius:12px;padding:8px;overflow-x:auto;direction:ltr;color:var(--paper-ink);min-height:60px}
+.paper svg{display:block;margin:0 auto;max-width:100%;height:auto}
+.tips ul{margin:0;padding-inline-start:20px;line-height:1.7;color:var(--muted)}
+.tips a{color:var(--rh)}
+.best{font-size:.9rem;color:var(--muted)}
+/* lessons */
+.lesson-card .ttl{font-size:1.15rem}
+.lesson-card .num{font-family:var(--display);font-size:1.6rem;font-weight:900;color:var(--line);line-height:1}
+#lesson{max-width:780px;display:flex;flex-direction:column;gap:18px}
+#lesson h2{font-family:var(--display);font-size:2.1rem;margin:0;text-wrap:balance}
+#lesson h3{font-family:var(--display);font-size:1.35rem;margin:6px 0 0}
+#lesson p,#lesson li{line-height:1.75;max-width:68ch}
+#lesson .ex{display:flex;flex-direction:column;gap:6px}
+#lesson .ex .bar2{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:.9rem}
+#lesson .quiz{display:flex;flex-direction:column;gap:14px}
+#lesson .q{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px}
+#lesson .q .opts2{display:flex;flex-wrap:wrap;gap:6px}
+#lesson .q button.ok{background:color-mix(in srgb,var(--lh) 18%,var(--surface));border-color:var(--lh)}
+#lesson .q button.no{background:color-mix(in srgb,var(--bad) 14%,var(--surface));border-color:var(--bad)}
+#lesson .q .why{color:var(--muted);font-size:.92rem}
+.lessnav{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+
+@media (max-width:820px){ .hero{grid-template-columns:1fr} .hero .art{display:none} .hide-sm{display:none!important} .two{grid-template-columns:1fr} }
 @media (prefers-reduced-motion:reduce){ *{transition:none!important;animation:none!important} }
 </style>
 </head>
@@ -187,7 +229,14 @@ input[type=range]{accent-color:var(--rh)}
     <label class="btn" for="file"><svg class="i"><use href="#i-upload"/></svg><span class="hide-sm">ייבוא תווים</span></label>
     <input type="file" id="file" accept=".musicxml,.xml,.mxl,.krn,.mei,.abc" hidden multiple>
   </header>
+  <nav class="tabs" aria-label="מדורים">
+    <button data-pane="pieces" aria-current="page">יצירות</button>
+    <button data-pane="scales">סולמות</button>
+    <button data-pane="drill">אימון קריאה</button>
+    <button data-pane="theory">תאוריה</button>
+  </nav>
 
+  <div class="pane" id="pane-pieces">
   <section class="hero">
     <div>
       <h1>נגן. היא מחכה לך.</h1>
@@ -226,6 +275,63 @@ input[type=range]{accent-color:var(--rh)}
   <section id="mine" hidden><div class="sect"><h2>השירים שלי</h2></div><div class="grid" id="mineGrid"></div></section>
   <div id="lib"></div>
   <p class="foot">אפשר לייבא קבצי MusicXML ‏(.musicxml, ‏.mxl, למשל מ-MuseScore), Humdrum ‏(.krn), ‏MEI או ABC. הם נשמרים רק בדפדפן הזה. היצירות בספרייה הן נחלת הכלל או ברישיון פתוח, והמקור והרישיון של כל אחת מופיעים בהגדרות שבמסך הנגינה. צלילי הפסנתר: Salamander Grand Piano מאת Alexander Holm ‏(CC BY 3.0). תווים: Verovio.</p>
+  </div>
+
+  <div class="pane" id="pane-scales" hidden>
+    <div class="sect"><h2>סולמות</h2><span>כל סולם, באצבוע הסטנדרטי, עם האזנה והמתנה כמו ביצירות</span></div>
+    <div class="two">
+      <div class="panel opts">
+        <div class="lbl">סוג הסולם</div>
+        <div class="chips" id="scType"></div>
+        <div class="lbl">טוניקה <span class="muted">(לפי מעגל הקווינטות)</span></div>
+        <div class="chips keys" id="scKeys"></div>
+        <div class="row2">
+          <div><div class="lbl">ידיים</div><span class="seg" id="scHands"><button data-v="R" aria-pressed="true">ימין</button><button data-v="L">שמאל</button><button data-v="both">שתיהן</button></span></div>
+          <div><div class="lbl">אוקטבות</div><span class="seg" id="scOct"><button data-v="1" aria-pressed="true">1</button><button data-v="2">2</button></span></div>
+        </div>
+        <button class="btn primary big" id="scGo"><svg class="i"><use href="#i-play"/></svg><span>לתרגל את הסולם</span></button>
+      </div>
+      <div class="panel">
+        <h3 class="pv-title" id="scTitle"></h3>
+        <div class="pv-info" id="scInfo"></div>
+        <div class="paper" id="scSvg"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="pane" id="pane-drill" hidden>
+    <div class="sect"><h2>אימון קריאת תווים</h2><span>תו מופיע על החמשה ואתה מנגן אותו. בלי רמזים על המקלדת.</span></div>
+    <div class="two">
+      <div class="panel opts">
+        <div class="lbl">מפתח</div>
+        <span class="seg" id="drClef"><button data-v="bass" aria-pressed="true">מפתח פה</button><button data-v="treble">מפתח סול</button><button data-v="both">שניהם</button></span>
+        <div class="lbl">טווח</div>
+        <span class="seg" id="drRange"><button data-v="staff" aria-pressed="true">על החמשה</button><button data-v="ledger">כולל קווי עזר</button></span>
+        <div class="lbl">אורך</div>
+        <span class="seg" id="drCount"><button data-v="12">12 תווים</button><button data-v="24" aria-pressed="true">24</button><button data-v="48">48</button></span>
+        <label class="check"><input type="checkbox" id="drAcc"> עם דיאזים ובמולים</label>
+        <button class="btn primary big" id="drGo"><svg class="i"><use href="#i-play"/></svg><span>להתחיל</span></button>
+      </div>
+      <div class="panel tips">
+        <h3 class="pv-title">איך להתאמן</h3>
+        <ul>
+          <li>זהה קודם את התו, ורק אז חפש אותו על הפסנתר. אל תנחש לפי המקלדת.</li>
+          <li>אחרי שתי טעויות על אותו תו, המקש הנכון יידלק לרגע על המקלדת.</li>
+          <li>בסוף תראה כמה זמן לקח לך כל תו בממוצע. נסה לרדת מתחת לשנייה.</li>
+          <li>חדש במפתח פה? התחל מהשיעור <a href="#lesson-bass-clef" id="drLesson">מפתח פה – קריאה בסיסית</a>.</li>
+        </ul>
+        <div class="best" id="drBest"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="pane" id="pane-theory" hidden>
+    <div id="lessonList">
+      <div class="sect"><h2>תאוריה של המוזיקה</h2><span>שיעורים קצרים עם דוגמאות שאפשר לשמוע</span></div>
+      <div class="grid" id="lessons"></div>
+    </div>
+    <article id="lesson" hidden></article>
+  </div>
 </section>
 
 <section id="practice" hidden>
