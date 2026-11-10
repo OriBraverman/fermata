@@ -13,7 +13,7 @@ const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '
 const icon = (name, label) => `<svg class="i"><use href="#i-${name}"/></svg>${label ? `<span>${label}</span>` : ''}`;
 
 // ---------- settings ----------
-const S = Object.assign({ hands: 'both', speed: 80, accomp: true, octave: false, fingers: true, sens: 50, zoom: 46, layout: 'page' }, store.get('settings', {}));
+const S = Object.assign({ hands: 'both', speed: 80, accomp: true, metro: true, octave: false, fingers: true, sens: 50, zoom: 46, layout: 'page' }, store.get('settings', {}));
 const saveS = () => store.set('settings', S);
 
 // ---------- Verovio (Humdrum build only when a .krn file needs it) ----------
@@ -128,6 +128,7 @@ async function openPiece(meta, own) {
   hints = !meta.drill; wrongHere = 0; stepTimes = [];
   $('#status').hidden = !mic?.on; if (mic?.on) $('#heard').textContent = 'נגן את הצליל המסומן';
   document.querySelector('.controls .seg').hidden = !!(meta.scale || meta.drill); // the exercise already fixes the hands
+  $('#tempo').hidden = !!meta.drill; // reading drills are about finding the note, not timing
   buildKeyboard(); renderScore();
   const saved = meta.scale || meta.drill ? 0 : store.get('pos:' + meta.id, 0);
   idx = 0; mistakes = 0; startedAt = 0; loops = 0; $('#miss').textContent = 0;
@@ -233,12 +234,15 @@ const loopRange = () => { const a = barIndex(+$('#loopFrom').value, false), b = 
 const targetsOf = s => [...new Set(s.notes.filter(playable).map(n => n.midi))];
 const prevKeys = () => (idx > 0 ? [...new Set(P.steps[idx - 1].notes.map(n => n.midi))] : []); // still sounding: yours and the accompaniment
 
-function setStep(i) {
-  clearTimeout(autoTimer); idx = i;
-  const s = P.steps[idx];
+function showStep(i) {
+  idx = i; const s = P.steps[idx];
   $('#pos').innerHTML = s ? `תיבה <b>${esc(P.measures[s.measure]?.n ?? s.measure + 1)}</b> / ${P.measures.length}` : '';
   $('#progBar').style.width = (idx / P.steps.length * 100) + '%';
-  showTargets(); highlight(true); stepShownAt = performance.now(); wrongHere = 0;
+  showTargets(); highlight(true);
+}
+function setStep(i) {
+  clearTimeout(autoTimer); showStep(i);
+  const s = P.steps[idx]; stepShownAt = performance.now(); wrongHere = 0;
   if (!s) return;
   if (idx % 8 === 0 && !P.meta.scale && !P.meta.drill) {
     store.set('pos:' + P.meta.id, idx);
@@ -273,6 +277,7 @@ let lastMistakeT = -1e9;
 // keys played by the user (mic onsets, MIDI or tapping); fr = the detector frame for the mic
 function input(keys, src, fr) {
   if (!P || demoTimer || !P.steps[idx]) return;
+  if (TM) return tempoInput(keys, src, fr);
   const now = performance.now(), step = idx;
   const r = judge.feed(keys, now, fr?.db, src === 'mic' ? 110 : 0, src === 'mic' ? userStrikeT : null);
   r.hit.forEach(m => flash(m, 'hit', 250));
@@ -298,7 +303,7 @@ function finish() {
   store.set('pos:' + P.meta.id, 0); $('#progBar').style.width = '100%';
   store.set('recent', store.get('recent', []).filter(r => r.id !== P.meta.id));
   const secs = startedAt ? Math.round((performance.now() - startedAt) / 1000) : 0;
-  $('#dSteps').textContent = P.steps.length; $('#dTime').textContent = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`; $('#dMiss').textContent = mistakes;
+  $('#done h3').textContent = 'כל הכבוד!'; $('#dSteps').textContent = P.steps.length; $('#dSteps').nextElementSibling.textContent = 'צעדים'; lastTempo = false; $('#dTime').textContent = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`; $('#dMiss').textContent = mistakes;
   if (P.meta.drill && stepTimes.length) { // drills: average time per note, and your best for this drill
     const avg = stepTimes.slice(1).reduce((a, b) => a + b, 0) / Math.max(1, stepTimes.length - 1) / 1000;
     $('#dTime').textContent = avg.toFixed(1) + ' שנ׳'; $('#dTime').nextElementSibling.textContent = 'לתו בממוצע';
@@ -309,6 +314,7 @@ function finish() {
 $('#again').onclick = () => {
   $('#done').hidden = true; mistakes = 0; startedAt = 0; $('#miss').textContent = 0; stepTimes = [];
   if (P.meta.drill) return startDrill(); // a fresh set of notes
+  if (lastTempo) { setStep(TMfrom); return tempoStart(); }
   setStep(0);
 };
 $('#toLib').onclick = () => { $('#done').hidden = true; $('#back').click(); };
@@ -317,6 +323,7 @@ $('#restart').onclick = () => { stopDemo(); mistakes = 0; startedAt = 0; $('#mis
 // ---------- demo playback ----------
 $('#demo').onclick = () => {
   if (demoTimer) { stopDemo(); return setStep(idx); } // keep practising from where playback stopped
+  if (TM) { tempoStop(); setStep(idx); }
   audio(); const from = idx; let i = idx; const [a, b] = loopRange();
   $('#demo').innerHTML = icon('stop', 'עצור');
   const step = () => {
@@ -329,7 +336,98 @@ $('#demo').onclick = () => {
   };
   clearTimeout(autoTimer); demoTimer = -1; step();
 };
-function stopDemo() { if (demoTimer) { clearTimeout(demoTimer); demoTimer = null; $('#demo').innerHTML = icon('play', 'השמע'); } }
+function stopDemo() { if (TM) tempoStop(); if (demoTimer) { clearTimeout(demoTimer); demoTimer = null; $('#demo').innerHTML = icon('play', 'השמע'); } }
+
+// ---------- tempo mode: the score moves on by itself at the chosen speed, and you play along ----------
+// A note counts when you play it within ±WIN ms of its time. Mic onsets arrive about LAT ms after the
+// strike (FFT window + confirmation frame), so they're moved back by that much.
+const WIN = 220, LAT = 120; // ponytail: fixed latency estimate; add a calibration slider if timing feels off on some devices
+let TM = null, TMfrom = 0, lastTempo = false;
+$('#tempo').onclick = () => { if (TM) { tempoStop(); setStep(idx); } else tempoStart(); };
+async function tempoStart() {
+  stopDemo(); audio(); $('#done').hidden = true; togglePanel(false);
+  if (!mic?.on && !midiOn) { await startListening(); if (!mic?.on) return; }
+  const [a, b] = loopRange(), from = loopOn() ? Math.max(0, P.steps.findIndex(s => s.measure >= a)) : idx;
+  let end = P.steps.length; if (loopOn()) { const e = P.steps.findIndex(s => s.measure > b); if (e > from) end = e; }
+  const k = 100 / S.speed, s0 = P.steps[from];
+  // the length of a quarter note, from the first two steps that are apart
+  let qms = 600; for (let i = from + 1; i < end; i++) { const dq = P.steps[i].q - P.steps[i - 1].q; if (dq > 0) { qms = (P.steps[i].t - P.steps[i - 1].t) / dq; break; } }
+  qms *= k;
+  const firstBeat = Math.ceil(s0.q - 1e-6) - 4; // four clicks before the first note
+  const t0 = performance.now() + (s0.q - firstBeat) * qms + 150;
+  const T = i => t0 + (P.steps[i].t - s0.t) * k;
+  document.querySelectorAll('#score .tm-ok, #score .tm-miss').forEach(el => el.classList.remove('tm-ok', 'tm-miss'));
+  TM = { from, end, T, t0, qms, beat: firstBeat, q0: s0.q, sched: from, next: from, graded: from, got: new Map(), ok: 0, n: 0, timer: 0 };
+  TMfrom = from; mistakes = 0; $('#miss').textContent = 0;
+  $('#tempo').classList.add('on'); $('#tempo').innerHTML = icon('stop', 'עצור');
+  showStep(from);
+  TM.timer = setInterval(tempoTick, 20); tempoTick();
+}
+function tempoStop() {
+  if (!TM) return; clearInterval(TM.timer); TM = null;
+  $('#tempo').classList.remove('on'); $('#tempo').innerHTML = icon('metro', 'בקצב');
+}
+// a short noise tick: the mic's tonality check ignores it, so it never sounds like a key
+let tickBuf = null;
+function click(delay, strong) {
+  if (!tickBuf) { tickBuf = ctx.createBuffer(1, ctx.sampleRate * 0.03, ctx.sampleRate); const d = tickBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.004)); }
+  const s = ctx.createBufferSource(), g = ctx.createGain(); s.buffer = tickBuf; g.gain.value = strong ? 0.9 : 0.5; s.connect(g).connect(ctx.destination); s.start(ctx.currentTime + delay);
+}
+function tempoTick() {
+  const now = performance.now(), { T, end } = TM, ahead = now + 120;
+  // the count-in, then the beat
+  for (let at; (at = TM.t0 + (TM.beat - TM.q0) * TM.qms) < ahead && (TM.beat < TM.q0 || (S.metro && TM.sched < end)); TM.beat++)
+    if (at > now - 20) click(Math.max(0, at - now) / 1000, TM.beat < TM.q0);
+  if (now < TM.t0 - 60) { $('#status').hidden = false; $('#heard').textContent = 'מוכן… ' + Math.ceil((TM.t0 - now) / TM.qms); }
+  else if ($('#heard').textContent.startsWith('מוכן')) $('#heard').textContent = 'נגן!';
+  // the other hand, on time
+  for (; TM.sched < end && T(TM.sched) < ahead; TM.sched++) {
+    const s = P.steps[TM.sched], d = Math.max(0, T(TM.sched) - now) / 1000;
+    if (S.accomp) s.notes.filter(n => !playable(n)).forEach(n => sound(n.midi, n.dur / 1000 * 100 / S.speed, d));
+  }
+  // the cursor moves to your next note once the one before it is due (and at most 600 ms early)
+  while (TM.next < end) {
+    const i = TM.next; if (!targetsOf(P.steps[i]).length) { TM.next++; continue; }
+    if (i > TM.from && now < Math.max(T(i - 1), T(i) - 600)) break;
+    showStep(i); mic?.detector?.setTargets(targetsOf(P.steps[i]), prevKeys()); TM.next++;
+  }
+  // grade each note once its window has closed
+  while (TM.graded < end && now > T(TM.graded) + WIN) tempoGrade(TM.graded++);
+  if (TM.graded >= end) tempoFinish();
+}
+function tempoGrade(i) {
+  const s = P.steps[i], need = targetsOf(s); if (!need.length) return;
+  const got = TM.got.get(i), ok = !!got && need.every(m => got.has(m));
+  TM.n++; if (ok) TM.ok++;
+  for (const n of s.notes) if (playable(n)) document.getElementById(n.id)?.classList.add(ok ? 'tm-ok' : 'tm-miss');
+}
+const same = (a, b) => a === b || (S.octave && !P.meta.drill && (a - b) % 12 === 0);
+function tempoInput(keys, src, fr) {
+  const now = performance.now(), t = now - (src === 'mic' ? LAT : 0), hit = [];
+  for (const m of keys) {
+    // the nearest note in time that wants this key and hasn't had it yet
+    let best = -1, bd = WIN;
+    for (let i = TM.graded; i < TM.end && TM.T(i) < t + WIN; i++) {
+      const d = Math.abs(TM.T(i) - t), w = targetsOf(P.steps[i]).find(w => same(m, w));
+      if (w !== undefined && d <= bd && !TM.got.get(i)?.has(w)) { best = i; bd = d; }
+    }
+    if (best < 0) continue;
+    const w = targetsOf(P.steps[best]).find(w => same(m, w));
+    if (!TM.got.has(best)) TM.got.set(best, new Set()); TM.got.get(best).add(w); hit.push(m); flash(m, 'hit', 250);
+  }
+  let wrong = keys.filter(m => !hit.includes(m));
+  if (src === 'mic') wrong = fr.attack && !hit.length && now - lastMistakeT > 350 ? wrong.filter(m => fr.db[m] >= fr.maxDb - 3).slice(0, 1) : [];
+  if (wrong.length) { lastMistakeT = now; mistakes += wrong.length; $('#miss').textContent = mistakes; wrong.forEach(m => flash(m, 'bad', 400)); }
+  log({ t: Math.round(now), src, tempo: true, keys, hit, wrong });
+}
+function tempoFinish() {
+  const { ok, n } = TM; tempoStop(); lastTempo = true;
+  const pct = n ? Math.round(ok / n * 100) : 0;
+  $('#done h3').textContent = pct >= 90 ? 'מצוין!' : pct >= 70 ? 'יפה מאוד!' : 'ממשיכים להתאמן';
+  $('#dSteps').textContent = `${ok}/${n}`; $('#dSteps').nextElementSibling.textContent = 'בזמן';
+  $('#dTime').textContent = pct + '%'; $('#dTime').nextElementSibling.textContent = `דיוק במהירות ${S.speed}%`;
+  $('#dMiss').textContent = mistakes; $('#done').hidden = false;
+}
 
 // ---------- microphone ----------
 $('#listen').onclick = () => (mic?.on ? stopListening() : startListening());
@@ -363,7 +461,8 @@ function stopListening() {
   mic?.stop(); mic = null; try { wakeLock?.release(); } catch { } wakeLock = null;
   $('#listen').innerHTML = icon('mic', 'האזנה'); $('#listen').classList.remove('on'); $('#listen').style.removeProperty('--lvl'); $('#status').hidden = true;
 }
-listenMidi((m) => { if (!P || $('#practice').hidden) return; flash(m, 'down', 150); input([m], 'midi'); }, names => { $('#midiState').textContent = names.length ? 'MIDI: ' + names.join(', ') : ''; });
+let midiOn = false;
+listenMidi((m) => { if (!P || $('#practice').hidden) return; flash(m, 'down', 150); input([m], 'midi'); }, names => { midiOn = names.length > 0; $('#midiState').textContent = names.length ? 'MIDI: ' + names.join(', ') : ''; });
 
 // ---------- controls ----------
 document.querySelectorAll('[data-hands]').forEach(b => {
@@ -387,6 +486,7 @@ bindRange('speed', 'speed', () => ($('#speedV').textContent = S.speed + '%'));
 bindRange('sens', 'sens', () => { if (mic?.detector) mic.detector.aboveFloorDb = 20 - S.sens / 100 * 12; });
 const bindCheck = (id, key, after) => { const el = $('#' + id); el.checked = S[key]; el.onchange = () => { S[key] = el.checked; saveS(); after?.(); }; };
 bindCheck('accomp', 'accomp');
+bindCheck('metro', 'metro');
 bindCheck('octave', 'octave', () => P && setStep(idx));
 bindCheck('fingers', 'fingers', () => P && (renderScore(), showTargets()));
 $('#zoomIn').onclick = () => { S.zoom = Math.min(90, S.zoom + 6); saveS(); renderScore(); };
@@ -478,4 +578,4 @@ async function openLesson(id) {
 }
 
 loadLibrary();
-window.__app = { get P() { return P; }, get idx() { return idx; }, input, setStep, LOG, get mic() { return mic; } }; // for testing / live debugging
+window.__app = { get P() { return P; }, get idx() { return idx; }, input, setStep, LOG, get mic() { return mic; }, get TM() { return TM; } }; // for testing / live debugging

@@ -26,6 +26,7 @@ Real sheet music, both hands, chords. Runs in the browser on a tablet, phone or 
 - **Listens to an acoustic piano** through the device microphone, or reads a digital piano over **MIDI** (Chrome, Edge, Android). You can also tap the on-screen keys.
 - **Real notation** for both staves (rendered with [Verovio](https://www.verovio.org)). The current notes are highlighted, and the page turns by itself.
 - **Fingering everywhere.** It shows the editor's fingering when the score has it, and works out a fingering when it doesn't.
+- **Tempo mode (בקצב):** after a one-bar count-in, the score moves on by itself at the speed you choose, with a metronome and the other hand playing along. Each note turns green when you play it on time and red when you miss it, and you get an on-time score at the end. Works with loops, for one passage at a time.
 - **Practice tools:** hands separately (the other hand plays along), loop any range of bars, listen to a passage at any speed on a sampled concert grand, and tap any note in the score to start there.
 - **Scales:** major, natural, harmonic and melodic minor, and chromatic, in every key on the circle of fifths. Practise one hand or both, over one or two octaves, with the standard fingering for each key, in the same wait mode as the pieces.
 - **Note-reading drill:** a note appears on the staff (bass, treble or both) and you play it. There are no hints on the keyboard, and the right key lights up only after two wrong tries. It tracks your average time per note, and it's the fastest way to get fluent in the bass clef.

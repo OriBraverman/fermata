@@ -108,6 +108,9 @@ input[type=range]{accent-color:var(--rh)}
 .controls .sp{flex:1}
 #listen{position:relative;min-width:132px;background:var(--rh);border-color:var(--rh);color:#fff}
 #listen.on{background:var(--bad);border-color:var(--bad)}
+#tempo.on{background:var(--rh);border-color:var(--rh);color:#fff}
+#score g.note.tm-ok,#score g.note.tm-ok *{fill:var(--lh)!important;stroke:var(--lh)}
+#score g.note.tm-miss,#score g.note.tm-miss *{fill:var(--bad)!important;stroke:var(--bad)}
 #listen.on::after{content:"";position:absolute;inset:-4px;border-radius:15px;border:3px solid var(--bad);opacity:calc(.15 + var(--lvl,0) * .85);transform:scale(calc(1 + var(--lvl,0) * .06));pointer-events:none}
 #heard{font-weight:600;color:var(--ink)}
 /* settings float over the score instead of pushing it down */
@@ -209,6 +212,7 @@ input[type=range]{accent-color:var(--rh)}
 
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></symbol>
+  <symbol id="i-metro" viewBox="0 0 24 24"><path d="M9 3h6l4 18H5zM12 16l5-9"/></symbol>
   <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></symbol>
   <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5l11 7-11 7z"/></symbol>
   <symbol id="i-restart" viewBox="0 0 24 24"><path d="M4 12a8 8 0 1 0 2.3-5.6M4 4v5h5"/></symbol>
@@ -345,6 +349,7 @@ input[type=range]{accent-color:var(--rh)}
   <div class="controls">
     <button class="btn" id="listen"><svg class="i"><use href="#i-mic"/></svg><span>האזנה</span></button>
     <button class="btn" id="demo"><svg class="i"><use href="#i-play"/></svg><span>השמע</span></button>
+    <button class="btn" id="tempo" title="לנגן בקצב: התווים מתקדמים לבד, במהירות שבחרת"><svg class="i"><use href="#i-metro"/></svg><span>בקצב</span></button>
     <button class="btn icon" id="restart" aria-label="מההתחלה"><svg class="i"><use href="#i-restart"/></svg></button>
     <span class="seg" role="group" aria-label="ידיים">
       <button data-hands="both" aria-pressed="true">שתי ידיים</button><button data-hands="R">ימין</button><button data-hands="L">שמאל</button>
@@ -361,6 +366,7 @@ input[type=range]{accent-color:var(--rh)}
     <fieldset><legend>השמעה</legend>
       <label>מהירות <input type="range" id="speed" min="30" max="130" value="80"> <span id="speedV">80%</span></label>
       <label><input type="checkbox" id="accomp" checked> לנגן את היד השנייה</label>
+      <label><input type="checkbox" id="metro" checked> מטרונום בנגינה בקצב</label>
     </fieldset>
     <fieldset><legend>זיהוי</legend>
       <label>רגישות <input type="range" id="sens" min="0" max="100" value="50"></label>
