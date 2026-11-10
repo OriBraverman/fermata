@@ -88,7 +88,7 @@ let P = null;            // { meta, tk, steps, measures, own }
 let idx = 0, mistakes = 0, startedAt = 0, loops = 0;
 let ctx = null, piano = null, mic = null, demoTimer = null, autoTimer = null, wakeLock = null;
 const judge = new WaitJudge();
-const appPlayed = new Map(); // key -> time the app itself sounded it (so the mic ignores it)
+const appPlayed = new Map(), appBegan = new Map(); // key -> when the app's own note of it ends / began (so the mic ignores it)
 const keyEls = new Map();
 
 function audio() { if (!ctx) { ctx = new (window.AudioContext || window.webkitAudioContext)(); piano = new Piano(ctx); piano.load(); } if (ctx.state === 'suspended') ctx.resume(); return ctx; }
@@ -96,7 +96,7 @@ function audio() { if (!ctx) { ctx = new (window.AudioContext || window.webkitAu
 function sound(m, dur, delay = 0) {
   audio(); piano.play(m, Math.min(dur, 2), 0.7, ctx.currentTime + delay);
   const start = performance.now() + delay * 1000;
-  appPlayed.set(m, Math.max(appPlayed.get(m) || 0, start + Math.min(dur, 2) * 1000));
+  appPlayed.set(m, Math.max(appPlayed.get(m) || 0, start + Math.min(dur, 2) * 1000)); appBegan.set(m, start);
   appStarts.push(start); while (appStarts.length > 64) appStarts.shift();
 }
 // when the app's own notes start: a strike heard right then is the speakers, not the player
@@ -345,8 +345,10 @@ async function startListening() {
       seenStrikeT = r.strikeT;
       if (!appStarts.some(s => r.strikeT >= s - 20 && r.strikeT <= s + 220)) { userStrikeT = r.strikeT; log({ t: Math.round(now), src: 'strike', at: Math.round(r.strikeT) }); }
     }
-    // ignore what the app itself is playing (accompaniment / taps) and its octaves
-    const keys = r.onsets.filter(m => ![0, 12, -12, 19, 24].some(d => (appPlayed.get(m - d) || 0) > now - 150));
+    // ignore what the app itself is playing (accompaniment / taps) and its octaves. A key you're expected to
+    // play only while the app's note an octave away is starting: the detector tells its own strike from overtones
+    const tg = new Set(P?.steps[idx] ? targetsOf(P.steps[idx]) : []);
+    const keys = r.onsets.filter(m => ![0, 12, -12, 19, 24].some(d => (appPlayed.get(m - d) || 0) > now - 150 && (!d || !tg.has(m) || now - appBegan.get(m - d) < 250)));
     if (keys.length) $('#heard').textContent = 'שומע: ' + keys.slice(0, 4).map(m => NAMES[m % 12] + (Math.floor(m / 12) - 1)).join(' ');
     if (r.checked.length) log({ t: Math.round(now), src: 'frame', on: r.checked.map(([m, ton]) => `${m}:${(r.db[m] - r.maxDb).toFixed(0)}:${ton}${r.onsets.includes(m) ? '' : 'x'}`), max: Math.round(r.maxDb), floor: Math.round(r.floor), atk: r.attack, rms: +r.rms.toFixed(4) });
     if (keys.length) input(keys, 'mic', r);

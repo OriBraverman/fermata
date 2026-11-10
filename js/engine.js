@@ -94,7 +94,7 @@ export class Detector {
   // sound on its own partials — the ones those notes can't produce.
   setTargets(midis, prev = []) {
     const key = midis.join(',') + '|' + prev.join(','); if (key === this.targetKey) return; this.targetKey = key;
-    this.targets = new Set(midis); this.nbParts = new Map(); this.ownIdx = new Map(); this.targetsT = null;
+    this.targets = new Set(midis); this.nbParts = new Map(); this.ownIdx = new Map(); this.ownHist = new Map(); this.targetsT = null;
     for (const m of this.targets) {
       const others = [...this.targets].filter(o => o !== m);
       this.nbParts.set(m, [m - 1, m + 1].filter(n => n >= LOW && n <= HIGH && !this.targets.has(n)).map(n => this.sal.exclusive(n, others)));
@@ -102,7 +102,7 @@ export class Detector {
       if (!rel.length) continue;
       const mine = this.sal.keys[m - LOW] || [], excl = new Set(this.sal.exclusive(m, rel));
       const idx = mine.map((p, i) => (excl.has(p) && p.w > 0.05 ? i : -1)).filter(i => i >= 0);
-      if (idx.length) this.ownIdx.set(m, idx); // none left (an octave): the judge's strike check handles it
+      if (idx.length) { this.ownIdx.set(m, idx); this.ownHist.set(m, []); } // none left (an octave): the judge's strike check handles it
     }
   }
   partialsAt(k, idx, mag) { const ps = this.sal.keys[k - LOW]; return ps ? this.sal.sum(idx.filter(i => i < ps.length).map(i => ps[i]), mag) : 0; }
@@ -147,10 +147,16 @@ export class Detector {
       const tgt = this.targets.has(m);
       const nb = tgt ? Math.max(-200, ...this.nbParts.get(m).map(ps => 20 * Math.log10(this.sal.sum(ps, mag) + 1e-9)))
         : Math.max(m > LOW ? db[m - 1] : -200, m < HIGH ? db[m + 1] : -200);
-      let ownOk = true;
-      if (tgt && this.ownIdx.has(m) && t - this.targetsT < 450) {
-        const idx = this.ownIdx.get(m);
-        ownOk = this.partialsAt(m, idx, mag) > 1.2 * Math.max(this.partialsAt(m - 1, idx, mag), this.partialsAt(m + 1, idx, mag));
+      let ownOk = true, ownJump = false;
+      if (tgt && this.ownIdx.has(m)) {
+        // its own partials must stand out from the neighbours', or jump more than theirs: a neighbour's partial
+        // can be lit by another ringing note (F4 lights B♭3's 3rd), but only a real strike makes A3's own ones
+        // jump. Not in the first 200 ms: the accompaniment the app starts with the step jumps them too.
+        const idx = this.ownIdx.get(m), own = this.partialsAt(m, idx, mag), nbOwn = Math.max(this.partialsAt(m - 1, idx, mag), this.partialsAt(m + 1, idx, mag));
+        const h = this.ownHist.get(m), o = 20 * Math.log10(own + 1e-9), n = 20 * Math.log10(nbOwn + 1e-9);
+        ownJump = h.length >= this.historyFrames && t - this.targetsT >= 200 && (o - Math.min(...h.map(x => x[0]))) - (n - Math.min(...h.map(x => x[1]))) > 6;
+        if (t - this.targetsT < 450) ownOk = own > 1.2 * nbOwn || ownJump;
+        h.push([o, n]); if (h.length > this.historyFrames) h.shift();
       }
       const peak = ownOk && db[m] > nb + this.neighbourDb && db[m] > this.floor + this.aboveFloorDb + (m < 40 ? 4 : 0) && db[m] > maxDb - (tgt ? this.targetRangeDb : 22);
       const newPeak = peak && t - this.peakT[m] > 250 && rise[m] > 3;
@@ -162,8 +168,8 @@ export class Detector {
         if (ton > this.tonalDb) { onsets.push(m); this.last[m] = t; } else this.armed[m] = 1;
         continue;
       }
-      if (rise[m] < (tgt ? 1.5 : this.riseDb * 0.4) && !newPeak) { this.armed[m] = 1; continue; }
-      const restrike = peak && (rise[m] > this.riseDb || (attack && rise[m] > 2.5) || (tgt && rise[m] > 3));
+      if (rise[m] < (tgt ? 1.5 : this.riseDb * 0.4) && !newPeak && !ownJump) { this.armed[m] = 1; continue; }
+      const restrike = peak && (rise[m] > this.riseDb || (attack && rise[m] > 2.5) || (tgt && rise[m] > 3) || ownJump);
       if (this.armed[m] && (newPeak || restrike) && t - this.last[m] > this.refractoryMs) { this.pending.add(m); this.armed[m] = 0; }
     }
     for (let m = LOW; m <= HIGH; m++) this.hist[m][this.hi] = db[m];

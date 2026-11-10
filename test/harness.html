@@ -17,7 +17,7 @@ async function render(steps, { reverb = 0.25, noise = 0.003, len } = {}) {
   const ctx = new OfflineAudioContext(1, Math.ceil(len * SR), SR), piano = new Piano(ctx); await piano.load();
   const dry = ctx.createGain(); dry.connect(ctx.destination);
   if (reverb) { const ir = ctx.createBuffer(1, SR * 0.9, SR), d = ir.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.exp(-i / (SR * 0.18)); const cv = ctx.createConvolver(); cv.buffer = ir; const wg = ctx.createGain(); wg.gain.value = reverb; dry.connect(cv).connect(wg).connect(ctx.destination); }
-  for (const s of steps) for (const k of s.keys) piano.play(k, s.dur || 0.9, s.vel ?? 0.6, s.t, dry);
+  for (const s of steps) { for (const k of s.keys) piano.play(k, s.dur || 0.9, s.vel ?? 0.6, s.t, dry); for (const k of s.app || []) piano.play(k, s.appDur || 0.31, 0.7, s.t + 0.13, dry); } // app: what the app plays when it accepts the step
   const buf = await ctx.startRendering(), x = buf.getChannelData(0);
   for (let i = 0; i < x.length; i++) x[i] += (Math.random() * 2 - 1) * noise;
   return x;
@@ -29,7 +29,7 @@ function judgeRun(x, steps, { octave = false, detOpts, trace = false } = {}) {
   j.setTarget(want(steps[0]), octave);
   const accT = [];
   for (let i = 8192; i < x.length; i += SR * HOP / 1000) {
-    det.setTargets(k < steps.length ? want(steps[k]) : [], k > 0 ? steps[k - 1].keys : []);
+    det.setTargets(k < steps.length ? want(steps[k]) : [], k > 0 ? [...steps[k - 1].keys, ...steps[k - 1].app || []] : []);
     const t = i / SR * 1000, r = det.process(x.subarray(i - 8192, i), t);
     // not recognised within 700 ms of being played: missed
     while (k < steps.length && t > steps[k].t * 1000 + 700) { if (!steps[k].wrong) missed.push(k); k++; if (k < steps.length) j.setTarget(want(steps[k]), octave, t); }
@@ -93,8 +93,15 @@ const wrong = [
   // live bug: after A4, D4 (whose 3rd harmonic is A4's 2nd) was accepted without being played
   { t: 7.0, keys: [69], expect: [69] }, { t: 7.5, keys: [], expect: [62], wrong: true },
   { t: 8.6, keys: [74], expect: [74] }, { t: 9.1, keys: [], expect: [67], wrong: true },
+  // live bug (Happy Farmer, left hand alone): the app plays the right-hand chord C4 F4 A4 with your C3,
+  // and the next left-hand note A3 was accepted without being played
+  { t: 10.2, keys: [48], app: [60, 65, 69] }, { t: 10.7, keys: [], expect: [57], wrong: true },
+  { t: 12.0, keys: [48], app: [64, 70, 72] }, { t: 12.5, keys: [], expect: [58], wrong: true },
+  { t: 13.8, keys: [48], app: [60, 65, 69], appDur: 2 }, { t: 14.3, keys: [], expect: [57], wrong: true },
+  // ...and when you do play that A3 soon after the app's chord, it must count
+  { t: 15.6, keys: [48], app: [60, 65, 69] }, { t: 16.0, keys: [57], dur: 0.45 }, { t: 16.5, keys: [48], app: [64, 70, 72] }, { t: 16.85, keys: [58] },
 ];
-{ const x = await render(wrong); const r = judgeRun(x, wrong); log(`${r.falseAcc.length ? 'FAIL' : 'ok  '} wrong notes rejected: false accepts at ${JSON.stringify(r.falseAcc)}, missed real ${JSON.stringify(r.missed.filter(i => !wrong[i].wrong))}`); }
+{ const x = await render(wrong); const r = judgeRun(x, wrong, { trace: only === "wrong" }); log(`${r.falseAcc.length || r.missed.length ? 'FAIL' : 'ok  '} wrong notes rejected: false accepts at ${JSON.stringify(r.falseAcc)}, missed real ${JSON.stringify(r.missed.filter(i => !wrong[i].wrong))}`); }
 // quiet room + loud noise
 { const s = tests['triads both hands']; const x = await render(s, { noise: 0.02, reverb: 0.5 }); const r = judgeRun(x, s); log(`${r.missed.length ? 'FAIL' : 'ok  '} triads, noisy reverberant room: missed ${JSON.stringify(r.missed)}`); }
 log('done');
