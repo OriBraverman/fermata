@@ -84,6 +84,8 @@ Plain HTML/JS modules with no build step. Verovio and the piano samples load fro
 
 Any static server works. The microphone needs `localhost` or https.
 
+Scores you can't publish (modern songs under copyright) can go in `local/`, which git ignores. Run `node tools/local-catalog.mjs` after adding files, and they appear in the library, tagged מקומי, only on that computer.
+
 ```bash
 npx serve .
 ```

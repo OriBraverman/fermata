@@ -40,6 +40,8 @@ async function dbDel(id) { const d = await idb(); return new Promise(r => { cons
 let catalog = [], mine = [], level = 0;
 async function loadLibrary() {
   try { catalog = await (await fetch('library/catalog.json')).json(); } catch { catalog = []; }
+  // songs kept only on this computer (local/, not on GitHub): their own catalog, if it's there
+  try { catalog.push(...(await (await fetch('local/catalog.json')).json()).map(p => ({ ...p, local: true }))); } catch { }
   $('#countChip').textContent = `${catalog.length} יצירות קלאסיות`;
   mine = await dbAll(); renderLibrary(); fromHash();
 }
@@ -48,7 +50,7 @@ function card(p, own) {
   return `<button class="card" data-id="${esc(p.id)}" data-own="${own ? 1 : ''}">
     <span class="who">${esc(p.composerHe || p.composer || 'קובץ מיובא')}</span>
     <span class="ttl">${esc(p.titleHe || p.title)}</span>${p.titleHe && p.title ? `<span class="en">${esc(p.title)}</span>` : ''}
-    <span class="ft">${p.level ? levelBars(p.level) + `<span>${LEVELS[p.level]}</span>` : ''}${p.hasFingering ? '<span class="tag">אצבוע מהעורך</span>' : ''}</span>
+    <span class="ft">${p.level ? levelBars(p.level) + `<span>${LEVELS[p.level]}</span>` : ''}${p.hasFingering ? '<span class="tag">אצבוע מהעורך</span>' : ''}${p.local ? '<span class="tag">מקומי</span>' : ''}</span>
     ${own ? `<span class="del" data-del="1" role="button" aria-label="מחק">${icon('trash')}</span>` : ''}</button>`;
 }
 function renderLibrary() {
@@ -114,7 +116,7 @@ async function openPiece(meta, own) {
     const fmt = meta.format || meta.file.split('.').pop();
     const tk = await toolkit(fmt === 'krn');
     let data = own ? meta.data : null;
-    if (!own) { const r = await fetch('library/' + meta.file); data = fmt === 'mxl' ? await r.arrayBuffer() : await r.text(); }
+    if (!own) { const r = await fetch((meta.local ? 'local/' : 'library/') + meta.file); data = fmt === 'mxl' ? await r.arrayBuffer() : await r.text(); }
     tk.setOptions({ breaks: 'auto' });
     const ok = fmt === 'mxl' ? tk.loadZipDataBuffer(data) : tk.loadData(data);
     if (!ok) throw new Error('load');
