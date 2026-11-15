@@ -83,7 +83,13 @@ export class Detector {
     this.rise = new Float32Array(128); this.peakT = new Float64Array(128).fill(-1e9);
     this.armed = new Uint8Array(128).fill(1); // one onset per attack: re-armed once the rise is over
     this.eHist = []; // short-time energy of recent hops, for broadband attack detection
-    this.targets = new Set();
+    this.targets = new Set(); this.magHist = []; // the last few spectra
+    this.onDb = new Float32Array(128).fill(-200); this.dipDb = new Float32Array(128).fill(-200); // level at a key's last onset, and its lowest since
+  }
+  // how many of key m's first 8 partials rose more than 3 dB over the last few frames
+  partialsUp(m, mag) {
+    const peak = (p, g) => { let mx = 0; for (let b = p.lo; b <= p.hi; b++) if (g[b] > mx) mx = g[b]; return mx; };
+    return (this.sal.keys[m - LOW] || []).slice(0, 8).filter(p => this.magHist.length && peak(p, mag) > 1.41 * Math.min(...this.magHist.map(g => peak(p, g)))).length;
   }
   // Score-informed: keys the player should strike next get a more lenient re-strike threshold,
   // because they are often already ringing as an overtone of a lower note.
@@ -165,14 +171,19 @@ export class Detector {
       if (this.pending.has(m)) {
         this.pending.delete(m);
         const ton = peak ? this.tonality(m, mag) : -99; checked.push([m, Math.round(ton)]);
-        if (ton > this.tonalDb) { onsets.push(m); this.last[m] = t; } else this.armed[m] = 1;
+        // a key still held since its last onset needs a new strike: it swells and fades as other strings beat
+        // against it. A strike lifts most of the key's partials at once (4–8 of the first 8); a swell, one or two.
+        const held = this.onDb[m] - this.dipDb[m] < 10;
+        const again = !held || this.strikeT > this.last[m] || this.partialsUp(m, mag) >= 3;
+        if (ton > this.tonalDb && again) { onsets.push(m); this.last[m] = t; this.onDb[m] = this.dipDb[m] = db[m]; } else this.armed[m] = 1;
         continue;
       }
       if (rise[m] < (tgt ? 1.5 : this.riseDb * 0.4) && !newPeak && !ownJump) { this.armed[m] = 1; continue; }
       const restrike = peak && (rise[m] > this.riseDb || (attack && rise[m] > 2.5) || (tgt && rise[m] > 3) || ownJump);
       if (this.armed[m] && (newPeak || restrike) && t - this.last[m] > this.refractoryMs) { this.pending.add(m); this.armed[m] = 0; }
     }
-    for (let m = LOW; m <= HIGH; m++) this.hist[m][this.hi] = db[m];
+    for (let m = LOW; m <= HIGH; m++) { this.hist[m][this.hi] = db[m]; if (db[m] < this.dipDb[m]) this.dipDb[m] = db[m]; }
+    this.magHist.push(Float32Array.from(mag)); if (this.magHist.length > this.historyFrames) this.magHist.shift();
     this.hi = (this.hi + 1) % this.historyFrames;
     return { onsets, db, floor: this.floor, rms, attack, maxDb, checked, strikeT: this.strikeT };
   }

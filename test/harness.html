@@ -100,6 +100,12 @@ const wrong = [
   { t: 13.8, keys: [48], app: [60, 65, 69], appDur: 2 }, { t: 14.3, keys: [], expect: [57], wrong: true },
   // ...and when you do play that A3 soon after the app's chord, it must count
   { t: 15.6, keys: [48], app: [60, 65, 69] }, { t: 16.0, keys: [57], dur: 0.45 }, { t: 16.5, keys: [48], app: [64, 70, 72] }, { t: 16.85, keys: [58] },
+  // live bug: a key you just played, held, and the next step wants it again: it must be struck again
+  { t: 18.2, keys: [64], dur: 1.5, vel: 0.8 }, { t: 18.7, keys: [], expect: [64], wrong: true },
+  { t: 20.4, keys: [60, 64], dur: 1.5, vel: 0.8 }, { t: 20.9, keys: [], expect: [64], wrong: true },
+  { t: 22.6, keys: [45], dur: 1.5, vel: 0.8 }, { t: 23.1, keys: [], expect: [45], wrong: true },
+  { t: 24.8, keys: [76, 52], dur: 1.5, vel: 0.8 }, { t: 25.3, keys: [], expect: [76], wrong: true },
+  { t: 27.0, keys: [55, 59, 62], dur: 1.5, vel: 0.8 }, { t: 27.5, keys: [], expect: [55, 62], wrong: true },
 ];
 { const x = await render(wrong); const r = judgeRun(x, wrong, { trace: only === "wrong" }); log(`${r.falseAcc.length || r.missed.length ? 'FAIL' : 'ok  '} wrong notes rejected: false accepts at ${JSON.stringify(r.falseAcc)}, missed real ${JSON.stringify(r.missed.filter(i => !wrong[i].wrong))}`); }
 // quiet room + loud noise
