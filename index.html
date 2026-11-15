@@ -136,6 +136,9 @@ input[type=range]{accent-color:var(--rh)}
 .spin{width:28px;height:28px;border:3px solid #ddd;border-top-color:#333;border-radius:50%;animation:sp 0.9s linear infinite}
 @keyframes sp{to{transform:rotate(1turn)}}
 
+#fall{flex:0 0 auto;width:100%;height:clamp(110px,24vh,240px);margin-bottom:-8px;border-radius:12px 12px 0 0;background:var(--ebony);display:block}
+#fall[hidden]{display:none}
+.spd b{min-width:46px;display:inline-flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums;font-size:.9rem}
 .kbwrap{flex:0 0 auto;height:clamp(116px,23vh,210px);direction:ltr;user-select:none;-webkit-user-select:none;touch-action:none;overflow:hidden;border-radius:12px 12px 8px 8px;background:var(--ebony-2);padding-top:7px;box-shadow:var(--shadow);position:relative}
 .kbwrap::before{content:"";position:absolute;inset:0 0 auto;height:7px;background:linear-gradient(var(--felt),color-mix(in srgb,var(--felt) 70%,#000))}
 #kb{position:relative;height:100%;display:flex;gap:1px}
@@ -350,6 +353,7 @@ input[type=range]{accent-color:var(--rh)}
     <button class="btn" id="listen"><svg class="i"><use href="#i-mic"/></svg><span>האזנה</span></button>
     <button class="btn" id="demo"><svg class="i"><use href="#i-play"/></svg><span>השמע</span></button>
     <button class="btn" id="tempo" title="לנגן בקצב: התווים מתקדמים לבד, במהירות שבחרת"><svg class="i"><use href="#i-metro"/></svg><span>בקצב</span></button>
+    <span class="seg spd" role="group" aria-label="מהירות"><button data-d="-5" aria-label="לאט יותר">−</button><b id="spdV">80%</b><button data-d="5" aria-label="מהר יותר">+</button></span>
     <button class="btn icon" id="restart" aria-label="מההתחלה"><svg class="i"><use href="#i-restart"/></svg></button>
     <span class="seg" role="group" aria-label="ידיים">
       <button data-hands="both" aria-pressed="true">שתי ידיים</button><button data-hands="R">ימין</button><button data-hands="L">שמאל</button>
@@ -382,6 +386,7 @@ input[type=range]{accent-color:var(--rh)}
   </div>
   <div id="notice" hidden></div>
   <div id="scorewrap"><div id="score"></div><div id="loading"><div class="spin"></div><span id="loadingText">טוען תווים…</span></div></div>
+  <canvas id="fall" hidden></canvas>
   <div class="kbwrap"><div id="kb"></div></div>
 </section>
 

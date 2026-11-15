@@ -127,7 +127,7 @@ async function openPiece(meta, own) {
   $('#loopFrom').value = 1; $('#loopTo').value = 4;
   hints = !meta.drill; wrongHere = 0; stepTimes = [];
   $('#status').hidden = !mic?.on; if (mic?.on) $('#heard').textContent = 'נגן את הצליל המסומן';
-  document.querySelector('.controls .seg').hidden = !!(meta.scale || meta.drill); // the exercise already fixes the hands
+  document.querySelector('.controls .seg:not(.spd)').hidden = !!(meta.scale || meta.drill); // the exercise already fixes the hands
   $('#tempo').hidden = !!meta.drill; // reading drills are about finding the note, not timing
   buildKeyboard(); renderScore();
   const saved = meta.scale || meta.drill ? 0 : store.get('pos:' + meta.id, 0);
@@ -358,13 +358,14 @@ async function tempoStart() {
   const T = i => t0 + (P.steps[i].t - s0.t) * k;
   document.querySelectorAll('#score .tm-ok, #score .tm-miss').forEach(el => el.classList.remove('tm-ok', 'tm-miss'));
   TM = { from, end, T, t0, qms, beat: firstBeat, q0: s0.q, sched: from, next: from, graded: from, got: new Map(), ok: 0, n: 0, timer: 0 };
-  TMfrom = from; mistakes = 0; $('#miss').textContent = 0;
+  TMfrom = from; mistakes = 0; $('#miss').textContent = 0; TM.res = new Map();
+  $('#fall').hidden = false; cancelAnimationFrame(fallRaf); fallRaf = requestAnimationFrame(drawFall);
   $('#tempo').classList.add('on'); $('#tempo').innerHTML = icon('stop', 'עצור');
   showStep(from);
   TM.timer = setInterval(tempoTick, 20); tempoTick();
 }
 function tempoStop() {
-  if (!TM) return; clearInterval(TM.timer); TM = null;
+  if (!TM) return; clearInterval(TM.timer); TM = null; cancelAnimationFrame(fallRaf); $('#fall').hidden = true;
   $('#tempo').classList.remove('on'); $('#tempo').innerHTML = icon('metro', 'בקצב');
 }
 // a short noise tick: the mic's tonality check ignores it, so it never sounds like a key
@@ -395,10 +396,42 @@ function tempoTick() {
   while (TM.graded < end && now > T(TM.graded) + WIN) tempoGrade(TM.graded++);
   if (TM.graded >= end) tempoFinish();
 }
+
+// falling notes above the keyboard: every note falls onto its key and reaches it when it's due; its length
+// is how long to hold it. Yours in the hand's colour with the finger, the other hand faint.
+let fallRaf = 0;
+function drawFall() {
+  if (!TM) return;
+  const cv = $('#fall'), dpr = devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
+  if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+  const g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+  const now = performance.now(), ahead = Math.max(1800, Math.min(4000, TM.qms * 4)), px = h / ahead, k = 100 / S.speed;
+  const css = getComputedStyle(document.documentElement), col = v => css.getPropertyValue(v).trim();
+  const left = cv.getBoundingClientRect().left, rects = new Map(), rect = m => { if (!rects.has(m)) { const el = keyEls.get(m); rects.set(m, el && el.getBoundingClientRect()); } return rects.get(m); };
+  // beat lines
+  g.fillStyle = 'rgba(255,255,255,.08)';
+  for (let b = Math.ceil(TM.q0 + (now - TM.t0) / TM.qms); ; b++) { const y = h - (TM.t0 + (b - TM.q0) * TM.qms - now) * px; if (y < 0) break; g.fillRect(0, y, w, 1); }
+  g.font = `700 ${Math.round(Math.min(15, w / 60))}px Rubik, sans-serif`; g.textAlign = 'center';
+  for (let i = Math.max(TM.from, TM.graded - 12); i < TM.end; i++) {
+    const dt = TM.T(i) - now; if (dt > ahead) break;
+    const res = TM.res.get(i);
+    for (const n of P.steps[i].notes) {
+      const r = rect(n.midi); if (!r) continue;
+      const len = Math.max(6, n.dur * k * px - 2), y = h - dt * px - len; if (y > h) continue;
+      const mine = playable(n), x = r.left - left + 1.5, bw = r.width - 3;
+      g.globalAlpha = mine ? (res === undefined ? 1 : 0.45) : 0.22;
+      g.fillStyle = !mine ? '#fff' : res === false ? col('--bad') : TM.got.get(i)?.has(n.midi) ? col('--gold') : col(n.hand === 'L' ? '--lh' : '--rh');
+      g.beginPath(); g.roundRect(x, y, bw, len, Math.min(5, bw / 3)); g.fill();
+      if (mine && S.fingers && n.finger && len > 16) { g.fillStyle = '#fff'; g.fillText(n.finger, x + bw / 2, y + len - 5); }
+    }
+  }
+  g.globalAlpha = 1; g.fillStyle = col('--gold'); g.fillRect(0, h - 2, w, 2); // the "now" line, on the keys
+  fallRaf = requestAnimationFrame(drawFall);
+}
 function tempoGrade(i) {
   const s = P.steps[i], need = targetsOf(s); if (!need.length) return;
   const got = TM.got.get(i), ok = !!got && need.every(m => got.has(m));
-  TM.n++; if (ok) TM.ok++;
+  TM.n++; if (ok) TM.ok++; TM.res.set(i, ok);
   for (const n of s.notes) if (playable(n)) document.getElementById(n.id)?.classList.add(ok ? 'tm-ok' : 'tm-miss');
 }
 const same = (a, b) => a === b || (S.octave && !P.meta.drill && (a - b) % 12 === 0);
@@ -414,6 +447,7 @@ function tempoInput(keys, src, fr) {
     if (best < 0) continue;
     const w = targetsOf(P.steps[best]).find(w => same(m, w));
     if (!TM.got.has(best)) TM.got.set(best, new Set()); TM.got.get(best).add(w); hit.push(m); flash(m, 'hit', 250);
+    const d = t - TM.T(best); $('#heard').textContent = Math.abs(d) < 70 ? 'בזמן ✓' : d < 0 ? 'מוקדם מדי' : 'מאוחר מדי';
   }
   let wrong = keys.filter(m => !hit.includes(m));
   if (src === 'mic') wrong = fr.attack && !hit.length && now - lastMistakeT > 350 ? wrong.filter(m => fr.db[m] >= fr.maxDb - 3).slice(0, 1) : [];
@@ -482,7 +516,9 @@ $('#scorewrap').addEventListener('pointerdown', () => togglePanel(false));
 $('#loopBtn').onclick = () => { const on = !loopOn(); $('#loopBtn').setAttribute('aria-pressed', on); if (on) { togglePanel(true); const [a] = loopRange(); setStep(Math.max(0, P.steps.findIndex(s => s.measure >= a))); } };
 $('#loopFrom').onchange = $('#loopTo').onchange = () => { if (loopOn()) { const [a] = loopRange(); setStep(Math.max(0, P.steps.findIndex(s => s.measure >= a))); } };
 const bindRange = (id, key, fmt) => { const el = $('#' + id); el.value = S[key]; if (fmt) fmt(); el.oninput = () => { S[key] = +el.value; saveS(); fmt?.(); }; };
-bindRange('speed', 'speed', () => ($('#speedV').textContent = S.speed + '%'));
+bindRange('speed', 'speed', () => ($('#speedV').textContent = $('#spdV').textContent = S.speed + '%'));
+// −/+ on the practice screen, 5% at a time
+document.querySelector('.spd').onclick = e => { const b = e.target.closest('[data-d]'); if (!b) return; $('#speed').value = S.speed = Math.max(30, Math.min(130, S.speed + +b.dataset.d)); $('#speed').oninput(); };
 bindRange('sens', 'sens', () => { if (mic?.detector) mic.detector.aboveFloorDb = 20 - S.sens / 100 * 12; });
 const bindCheck = (id, key, after) => { const el = $('#' + id); el.checked = S[key]; el.onchange = () => { S[key] = el.checked; saveS(); after?.(); }; };
 bindCheck('accomp', 'accomp');
